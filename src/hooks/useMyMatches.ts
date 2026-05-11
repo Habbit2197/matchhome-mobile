@@ -1,42 +1,33 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api, extractErrorMessage } from '../api/client'
+import type { Lead } from '../types'
 
-export interface SwipeHistoryItem {
-  id: number
-  direction: 'right' | 'left'
-  compatibility_score: number
-  property: {
-    id: number
-    title: string
-    type: string
-    pricing: { amount: number }
-    location: { city: string; zip_code: string }
-    specs: { rooms: number; bathrooms: number; size_m2: number }
-    images: { id: number; url: string; sort_order: number }[]
-  }
-  created_at: string
-}
+// Re-export para compatibilidad con código antiguo que importaba SwipeHistoryItem
+export type SwipeHistoryItem = Lead
 
 export function useMyMatches() {
-  const [items, setItems]       = useState<SwipeHistoryItem[]>([])
+  const [items, setItems]       = useState<Lead[]>([])
   const [isLoading, setLoading] = useState(true)
   const [error, setError]       = useState<string | null>(null)
 
-  const fetchHistory = useCallback(async () => {
+  const fetchLeads = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const { data } = await api.get('/swipes/history')
-      // Solo los swipe right
-      const items = (data.data.items as SwipeHistoryItem[]).filter(s => s.direction === 'right')
-      setItems(items)
+      const { data } = await api.get('/me/leads')
+      setItems(data.data.items as Lead[])
     } catch (err) {
-      setError(extractErrorMessage(err, 'Error al cargar matches'))
+      setError(extractErrorMessage(err, 'Error al cargar tus solicitudes'))
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchHistory() }, [fetchHistory])
+  useEffect(() => { fetchLeads() }, [fetchLeads])
 
-  return { items, isLoading, error, refetch: fetchHistory }
+  /** Actualizar un lead concreto en el estado local sin re-fetch completo */
+  const replaceLead = useCallback((updated: Lead) => {
+    setItems(prev => prev.map(l => l.id === updated.id ? updated : l))
+  }, [])
+
+  return { items, isLoading, error, refetch: fetchLeads, replaceLead }
 }

@@ -1,13 +1,38 @@
+import { useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, Platform,
+  ActivityIndicator, RefreshControl, Platform, Alert,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
-import { useMyMatches, type SwipeHistoryItem } from '../hooks/useMyMatches'
+import { useMyMatches } from '../hooks/useMyMatches'
+import { useUnlockChat } from '../hooks/useUnlockChat'
+import UnlockChatSheet from '../components/UnlockChatSheet'
+import type { Lead } from '../types'
 
 export default function MatchesScreen() {
-  const { items, isLoading, error, refetch } = useMyMatches()
+  const { items, isLoading, error, refetch, replaceLead } = useMyMatches()
+  const { unlock, isPaying, error: payError } = useUnlockChat()
+
+  const [sheetLead, setSheetLead] = useState<Lead | null>(null)
+
+  const handleCardPress = (lead: Lead) => {
+    if (!lead.chat_unlocked_at) {
+      setSheetLead(lead)
+    } else {
+      Alert.alert('Chat disponible', 'Aquí irá la pantalla de chat con el propietario.')
+    }
+  }
+
+  const handleConfirmPay = async () => {
+    if (!sheetLead) return
+    const updated = await unlock(sheetLead.id)
+    if (updated) {
+      replaceLead(updated)
+      setSheetLead(null)
+      Alert.alert('¡Chat desbloqueado!', 'Ya puedes hablar con el propietario.')
+    }
+  }
 
   if (isLoading && items.length === 0) {
     return (
@@ -19,7 +44,6 @@ export default function MatchesScreen() {
 
   return (
     <View style={styles.flex}>
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Mis solicitudes</Text>
@@ -32,7 +56,6 @@ export default function MatchesScreen() {
         </View>
       </View>
 
-      {/* Error banner */}
       {error && (
         <View style={styles.errorBanner}>
           <Ionicons name="alert-circle" size={16} color="#dc2626" />
@@ -40,7 +63,6 @@ export default function MatchesScreen() {
         </View>
       )}
 
-      {/* Lista */}
       {items.length === 0 ? (
         <View style={[styles.flex, styles.center, { padding: 32 }]}>
           <View style={styles.emptyIcon}>
@@ -57,22 +79,42 @@ export default function MatchesScreen() {
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#0f172a" />}
-          renderItem={({ item }) => <MatchCard item={item} />}
+          renderItem={({ item }) => (
+            <MatchCard item={item} onPress={() => handleCardPress(item)} />
+          )}
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <UnlockChatSheet
+        visible={sheetLead !== null}
+        lead={sheetLead}
+        isPaying={isPaying}
+        error={payError}
+        onClose={() => setSheetLead(null)}
+        onConfirm={handleConfirmPay}
+      />
     </View>
   )
 }
 
-function MatchCard({ item }: { item: SwipeHistoryItem }) {
-  const cover = item.property.images?.[0]?.url
+function MatchCard({ item, onPress }: { item: Lead; onPress: () => void }) {
+  const property = item.property
+  if (!property) return null
+
+  const cover = property.images?.[0]?.url
   const score = item.compatibility_score
   const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#64748b'
   const scoreBg    = score >= 80 ? '#d1fae5' : score >= 60 ? '#fef3c7' : '#f1f5f9'
 
+  const status = item.contract_signed_at
+    ? { label: 'Contrato firmado', color: '#059669', bg: '#d1fae5', dot: '#10b981', icon: 'document-text' as const }
+    : item.chat_unlocked_at
+    ? { label: 'Chat disponible · Toca para abrir', color: '#0284c7', bg: '#dbeafe', dot: '#3b82f6', icon: 'chatbubble-ellipses' as const }
+    : { label: 'Pagar 5€ para chatear', color: '#7c3aed', bg: '#ede9fe', dot: '#8b5cf6', icon: 'lock-closed' as const }
+
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
       {cover ? (
         <Image source={cover} style={styles.cardImage} contentFit="cover" />
       ) : (
@@ -82,27 +124,27 @@ function MatchCard({ item }: { item: SwipeHistoryItem }) {
       )}
       <View style={styles.cardBody}>
         <View style={styles.cardTopRow}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.property.title}</Text>
+          <Text style={styles.cardTitle} numberOfLines={1}>{property.title}</Text>
           <View style={[styles.scoreChip, { backgroundColor: scoreBg }]}>
             <Text style={[styles.scoreTxt, { color: scoreColor }]}>{score}%</Text>
           </View>
         </View>
         <View style={styles.cardLocation}>
           <Ionicons name="location-outline" size={12} color="#64748b" />
-          <Text style={styles.cardLocationTxt}>{item.property.location.city}</Text>
+          <Text style={styles.cardLocationTxt}>{property.location.city}</Text>
         </View>
         <View style={styles.cardBottomRow}>
           <Text style={styles.cardSpecs}>
-            {item.property.specs.rooms} hab · {item.property.specs.size_m2}m²
+            {property.specs.rooms} hab · {property.specs.size_m2}m²
           </Text>
-          <Text style={styles.cardPrice}>{item.property.pricing.amount}€</Text>
+          <Text style={styles.cardPrice}>{property.pricing.amount}€</Text>
         </View>
-        <View style={styles.cardStatus}>
-          <View style={styles.statusDot} />
-          <Text style={styles.statusTxt}>Solicitud enviada</Text>
+        <View style={[styles.cardStatus, { backgroundColor: status.bg }]}>
+          <Ionicons name={status.icon} size={12} color={status.color} />
+          <Text style={[styles.statusTxt, { color: status.color }]}>{status.label}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   )
 }
 
@@ -154,9 +196,11 @@ const styles = StyleSheet.create({
   cardSpecs:    { fontSize: 12, color: '#64748b' },
   cardPrice:    { fontSize: 16, fontWeight: '800', color: '#0f172a' },
 
-  cardStatus:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  statusDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: '#3b82f6' },
-  statusTxt:    { fontSize: 11, color: '#475569', fontWeight: '500' },
+  cardStatus:   {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
+    paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, alignSelf: 'flex-start',
+  },
+  statusTxt:    { fontSize: 11, fontWeight: '700' },
 
   emptyIcon:    {
     width: 64, height: 64, borderRadius: 20,

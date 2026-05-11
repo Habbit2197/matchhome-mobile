@@ -34,13 +34,18 @@ export interface SwipeResult {
 export interface Lead {
   id: number
   status: 'new' | 'contacted' | 'visiting' | 'negotiating' | 'closed_won' | 'closed_lost'
-  source: 'swipe' | 'direct'
+  source: 'swipe' | 'direct' | 'imported_idealista' | 'imported_fotocasa'
   compatibility_score: number
-  tenant: User
-  property: Property
+  tenant?: User
+  property?: Property
   agent_notes: string | null
   contacted_at: string | null
   closed_at: string | null
   created_at: string
   updated_at: string
+
+  // ── Nuevos campos del marketplace transaccional ──
+  chat_unlocked_at: string | null
+  contract_signed_at: string | null
+  contract_monthly_amount: string | number | null
 }
