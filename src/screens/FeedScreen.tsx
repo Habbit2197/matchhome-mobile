@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, Dimensions, TouchableOpacity,
   ActivityIndicator, Animated, PanResponder, Platform,
 } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
 import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
 import { useFeed } from '../hooks/useFeed'
@@ -22,6 +23,7 @@ export default function FeedScreen() {
   const swipingRef              = useRef(false)
 
   const current = properties[index]
+  const navigation = useNavigation<any>()
   const next    = properties[index + 1]
 
   // Rotación de la card según movimiento horizontal
@@ -182,6 +184,15 @@ export default function FeedScreen() {
         <TouchableOpacity onPress={() => handleManualSwipe('left')} style={[styles.actionBtn, styles.btnNope]}>
           <Ionicons name="close" size={32} color="#ef4444" />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => current && navigation.navigate('PropertyDetail', { propertyId: current.id })}
+          style={[styles.actionBtn, styles.btnDetails]}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="information-circle-outline" size={28} color="#0f172a" />
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => handleManualSwipe('right')} style={[styles.actionBtn, styles.btnLike]}>
           <Ionicons name="heart" size={28} color="#10b981" />
         </TouchableOpacity>
@@ -341,6 +352,7 @@ const styles = StyleSheet.create({
   },
   btnNope:     { borderColor: '#fee2e2' },
   btnLike:     { borderColor: '#d1fae5' },
+  btnDetails:  { width: 56, height: 56, borderRadius: 28, borderColor: '#cbd5e1', transform: [{ scale: 0.92 }] },
 
   matchToast: {
     position: 'absolute', top: Platform.OS === 'ios' ? 110 : 90,

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigation } from '@react-navigation/native'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Platform, Alert,
@@ -13,6 +14,7 @@ import type { Lead } from '../types'
 export default function MatchesScreen() {
   const { items, isLoading, error, refetch, replaceLead } = useMyMatches()
   const { unlock, isPaying, error: payError } = useUnlockChat()
+  const navigation = useNavigation<any>()
 
   const [sheetLead, setSheetLead] = useState<Lead | null>(null)
 
@@ -20,7 +22,11 @@ export default function MatchesScreen() {
     if (!lead.chat_unlocked_at) {
       setSheetLead(lead)
     } else {
-      Alert.alert('Chat disponible', 'Aquí irá la pantalla de chat con el propietario.')
+      navigation.navigate('Chat', {
+        leadId: lead.id,
+        counterpartyName: lead.property?.agency?.name ?? 'Propietario',
+        propertyTitle: lead.property?.title ?? 'Inmueble',
+      })
     }
   }
 

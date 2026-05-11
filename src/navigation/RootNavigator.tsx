@@ -10,6 +10,8 @@ import RegisterScreen from '../screens/RegisterScreen'
 import FeedScreen     from '../screens/FeedScreen'
 import MatchesScreen  from '../screens/MatchesScreen'
 import ProfileScreen  from '../screens/ProfileScreen'
+import ChatScreen     from '../screens/ChatScreen'
+import PropertyDetailScreen from "../screens/PropertyDetailScreen"
 
 const Stack = createNativeStackNavigator()
 const Tab   = createBottomTabNavigator()
@@ -53,6 +55,16 @@ function MainTabs() {
   )
 }
 
+function MainStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Tabs" component={MainTabs} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
+    </Stack.Navigator>
+  )
+}
+
 export default function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth()
 
@@ -66,7 +78,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <MainTabs /> : <AuthStack />}
+      {isAuthenticated ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   )
 }

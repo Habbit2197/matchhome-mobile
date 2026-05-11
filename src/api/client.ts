@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store'
 
 // IMPORTANTE: Para iOS Simulator usa localhost, para Android usa 10.0.2.2,
 // para móvil real cambiar a IP local de tu Mac (ej: http://192.168.1.34:8000/api)
-const API_URL = 'http://localhost:8000/api'
+const API_URL = 'http://192.168.1.129:8000/api'
 
 const TOKEN_KEY = 'mh_auth_token'
 
