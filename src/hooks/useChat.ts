@@ -37,11 +37,18 @@ export interface ChatPropertyMeta {
   city: string | null
 }
 
+export interface ChatLeadMeta {
+  id: number
+  status: string
+  closed_at: string | null
+}
+
 export function useChat(leadId: number | null) {
   const [messages, setMessages]     = useState<ChatMessage[]>([])
   const [myId, setMyId]             = useState<number | null>(null)
   const [counterparty, setCounter]  = useState<ChatCounterparty | null>(null)
   const [propertyMeta, setProperty] = useState<ChatPropertyMeta | null>(null)
+  const [leadMeta, setLead]         = useState<ChatLeadMeta | null>(null)
   const [loading, setLoading]       = useState(false)
   const [sending, setSending]       = useState(false)
 
@@ -58,6 +65,7 @@ export function useChat(leadId: number | null) {
       setMyId(d.meta.my_id)
       setCounter(d.meta.counterparty ?? null)
       setProperty(d.meta.property ?? null)
+      setLead(d.meta.lead ?? null)
       lastIdRef.current = d.meta.last_id ?? 0
     } catch (e) {
       console.warn('chat loadInitial:', e)
@@ -111,6 +119,7 @@ export function useChat(leadId: number | null) {
     myId,
     counterparty,
     propertyMeta,
+    leadMeta,
     loading,
     sending,
     send,

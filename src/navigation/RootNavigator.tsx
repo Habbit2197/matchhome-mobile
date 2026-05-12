@@ -12,8 +12,11 @@ import MatchesScreen  from '../screens/MatchesScreen'
 import ProfileScreen  from '../screens/ProfileScreen'
 import ChatScreen     from '../screens/ChatScreen'
 import PropertyDetailScreen from "../screens/PropertyDetailScreen"
+import PublicProfileScreen  from '../screens/PublicProfileScreen'
 import NotificationsScreen  from '../screens/NotificationsScreen'
 import { useNotifications } from '../hooks/useNotifications'
+import WelcomeOverlay from '../components/animations/WelcomeOverlay'
+import { useEffect, useRef, useState } from 'react'
 
 const Stack = createNativeStackNavigator()
 const Tab   = createBottomTabNavigator()
@@ -101,12 +104,22 @@ function MainStack() {
       <Stack.Screen name="Tabs" component={MainTabs} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: true, headerBackTitle: "Volver" }} />
     </Stack.Navigator>
   )
 }
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
+  const [showWelcome, setShowWelcome] = useState(false)
+  const wasAuthenticatedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    if (isAuthenticated && !wasAuthenticatedRef.current && user) {
+      setShowWelcome(true)
+    }
+    wasAuthenticatedRef.current = isAuthenticated
+  }, [isAuthenticated, user])
 
   if (isLoading) {
     return (
@@ -119,6 +132,12 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       {isAuthenticated ? <MainStack /> : <AuthStack />}
+      {showWelcome && user && (
+        <WelcomeOverlay
+          userName={user.name}
+          onFinish={() => setShowWelcome(false)}
+        />
+      )}
     </NavigationContainer>
   )
 }

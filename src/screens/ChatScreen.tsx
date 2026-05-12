@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { useChat, ChatMessage } from '../hooks/useChat'
+import ReviewModal from '../components/reviews/ReviewModal'
 
 type ChatRouteParams = {
   Chat: {
@@ -30,7 +31,7 @@ export default function ChatScreen() {
   const { leadId, counterpartyName, propertyTitle } = route.params
 
   const {
-    messages, myId, counterparty, propertyMeta,
+    messages, myId, counterparty, propertyMeta, leadMeta,
     loading, sending, send,
   } = useChat(leadId)
 
@@ -38,6 +39,8 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList>(null)
 
   // Datos para pintar
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewedSuccess, setReviewedSuccess] = useState(false)
   const displayName = counterparty?.name ?? counterpartyName ?? 'Cargando…'
   const propTitle   = propertyMeta?.title ?? propertyTitle ?? 'Inmueble'
   const phone       = counterparty?.phone ?? null
@@ -150,7 +153,29 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {leadMeta?.status === 'closed_won' && !reviewedSuccess && counterparty?.id && (
+          <TouchableOpacity
+            onPress={() => setReviewOpen(true)}
+            style={styles.reviewBtn}
+            accessibilityLabel="Dejar reseña"
+          >
+            <Ionicons name="star" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Modal de reseña */}
+      {leadMeta && counterparty?.id && (
+        <ReviewModal
+          visible={reviewOpen}
+          onClose={() => setReviewOpen(false)}
+          onSuccess={() => setReviewedSuccess(true)}
+          reviewedUserId={counterparty.id}
+          reviewedUserName={displayName}
+          leadId={leadMeta.id}
+        />
+      )}
 
       {/* Mensajes */}
       <KeyboardAvoidingView
@@ -249,6 +274,12 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: '#f1f5f9',
     alignItems: 'center', justifyContent: 'center',
+  },
+  reviewBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#f59e0b',
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: 6,
   },
   waBtn: {
     width: 34, height: 34, borderRadius: 17,
