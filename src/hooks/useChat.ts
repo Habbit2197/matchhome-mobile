@@ -1,7 +1,14 @@
 /**
- * Hook para el chat de un lead en mobile.
- * - Polling 3s con ?since={last_id}
- * - Carga inicial + envío de mensajes
+ * Hook del chat de un lead para mobile.
+ *
+ * Responsabilidades:
+ *  - Carga inicial completa de mensajes (since=0)
+ *  - Polling cada 3s con ?since=last_id
+ *  - Envío de mensaje con rollback
+ *  - Expone counterparty (con phone para WhatsApp) y propertyMeta
+ *    para que la cabecera del chat no haga peticiones extra
+ *
+ * Cierra el polling al desmontar o al cambiar de lead.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
@@ -17,14 +24,29 @@ export interface ChatMessage {
   created_at: string
 }
 
+export interface ChatCounterparty {
+  id: number
+  name: string
+  phone: string | null
+  avatar_url: string | null
+}
+
+export interface ChatPropertyMeta {
+  id: number | null
+  title: string | null
+  city: string | null
+}
+
 export function useChat(leadId: number | null) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [myId, setMyId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [messages, setMessages]     = useState<ChatMessage[]>([])
+  const [myId, setMyId]             = useState<number | null>(null)
+  const [counterparty, setCounter]  = useState<ChatCounterparty | null>(null)
+  const [propertyMeta, setProperty] = useState<ChatPropertyMeta | null>(null)
+  const [loading, setLoading]       = useState(false)
+  const [sending, setSending]       = useState(false)
 
   const lastIdRef = useRef<number>(0)
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
+  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadInitial = useCallback(async () => {
     if (!leadId) return
@@ -34,6 +56,8 @@ export function useChat(leadId: number | null) {
       const d = r.data.data
       setMessages(d.messages)
       setMyId(d.meta.my_id)
+      setCounter(d.meta.counterparty ?? null)
+      setProperty(d.meta.property ?? null)
       lastIdRef.current = d.meta.last_id ?? 0
     } catch (e) {
       console.warn('chat loadInitial:', e)
@@ -82,5 +106,14 @@ export function useChat(leadId: number | null) {
     }
   }, [leadId, loadInitial, poll])
 
-  return { messages, myId, loading, sending, send, refetch: loadInitial }
+  return {
+    messages,
+    myId,
+    counterparty,
+    propertyMeta,
+    loading,
+    sending,
+    send,
+    refetch: loadInitial,
+  }
 }

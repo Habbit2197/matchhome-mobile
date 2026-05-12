@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView,
-  Platform, StyleSheet, ActivityIndicator, SafeAreaView,
+  Platform, StyleSheet, ActivityIndicator, SafeAreaView, Image, Linking, Alert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
@@ -10,19 +10,71 @@ import { useChat, ChatMessage } from '../hooks/useChat'
 type ChatRouteParams = {
   Chat: {
     leadId: number
+    /** Fallback antes de que cargue el counterparty del backend */
     counterpartyName?: string
     propertyTitle?: string
   }
 }
 
+/**
+ * Pantalla de chat estilo WhatsApp.
+ *
+ * El counterparty (con phone para WhatsApp) y el propertyMeta vienen
+ * directamente del backend en el meta de /api/leads/{lead}/messages, asi
+ * que no hace falta una llamada extra. Los route params son solo un
+ * fallback visual mientras se completa la primera carga.
+ */
 export default function ChatScreen() {
   const route = useRoute<RouteProp<ChatRouteParams, 'Chat'>>()
-  const navigation = useNavigation()
-  const { leadId, counterpartyName = 'Propietario', propertyTitle = 'Inmueble' } = route.params
+  const navigation = useNavigation<any>()
+  const { leadId, counterpartyName, propertyTitle } = route.params
 
-  const { messages, myId, loading, sending, send } = useChat(leadId)
+  const {
+    messages, myId, counterparty, propertyMeta,
+    loading, sending, send,
+  } = useChat(leadId)
+
   const [draft, setDraft] = useState('')
   const listRef = useRef<FlatList>(null)
+
+  // Datos para pintar
+  const displayName = counterparty?.name ?? counterpartyName ?? 'Cargando…'
+  const propTitle   = propertyMeta?.title ?? propertyTitle ?? 'Inmueble'
+  const phone       = counterparty?.phone ?? null
+  const avatarUrl   = counterparty?.avatar_url ?? null
+
+  // Construye numero internacional (asume Espana si tiene 9 digitos)
+  const buildIntlPhone = (raw: string): string => {
+    const digits = raw.replace(/[^0-9]/g, '')
+    return digits.length === 9 ? `34${digits}` : digits
+  }
+
+  const openWhatsApp = async () => {
+    if (!phone) return
+    const intl = buildIntlPhone(phone)
+    const text = encodeURIComponent(
+      `Hola ${counterparty?.name ?? ''}, te escribo desde MatchHome sobre "${propTitle}".`
+    )
+    const url = `https://wa.me/${intl}?text=${text}`
+    const can = await Linking.canOpenURL(url)
+    if (can) {
+      Linking.openURL(url)
+    } else {
+      Alert.alert('No se pudo abrir WhatsApp', 'Comprueba que tienes WhatsApp instalado.')
+    }
+  }
+
+  const openCall = async () => {
+    if (!phone) return
+    const sanitized = phone.replace(/[^0-9+]/g, '')
+    const url = `tel:${sanitized}`
+    const can = await Linking.canOpenURL(url)
+    if (can) {
+      Linking.openURL(url)
+    } else {
+      Alert.alert('Llamadas no disponibles', 'Este dispositivo no puede hacer llamadas.')
+    }
+  }
 
   // Auto-scroll cuando llegan mensajes
   useEffect(() => {
@@ -68,18 +120,36 @@ export default function ChatScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={26} color="#0f172a" />
         </TouchableOpacity>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {counterpartyName.charAt(0).toUpperCase()}
-          </Text>
-        </View>
+
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarText}>
+              {displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.headerInfo}>
-          <Text style={styles.headerName} numberOfLines={1}>{counterpartyName}</Text>
+          <Text style={styles.headerName} numberOfLines={1}>{displayName}</Text>
           <View style={styles.headerSubRow}>
             <Ionicons name="home-outline" size={11} color="#64748b" />
-            <Text style={styles.headerSub} numberOfLines={1}>{propertyTitle}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>{propTitle}</Text>
           </View>
         </View>
+
+        {/* Atajos de contacto */}
+        {phone && (
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={openCall} style={styles.callBtn} accessibilityLabel="Llamar">
+              <Ionicons name="call" size={16} color="#0f172a" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openWhatsApp} style={styles.waBtn} accessibilityLabel="Abrir WhatsApp">
+              <Ionicons name="logo-whatsapp" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Mensajes */}
@@ -149,6 +219,7 @@ const styles = StyleSheet.create({
   safe:  { flex: 1, backgroundColor: '#fff' },
   flex:  { flex: 1 },
   center:{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  row:   { flexDirection: 'row', marginBottom: 6 },
 
   header: {
     flexDirection: 'row',
@@ -161,7 +232,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   backBtn: { padding: 4 },
-  avatar: {
+  avatar:  { width: 40, height: 40, borderRadius: 20 },
+  avatarFallback: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: '#10b981',
     alignItems: 'center', justifyContent: 'center',
@@ -172,10 +244,21 @@ const styles = StyleSheet.create({
   headerSubRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
   headerSub: { fontSize: 11, color: '#64748b' },
 
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  callBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  waBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: '#22c55e',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   chatArea: { flex: 1, backgroundColor: '#efeae2' },
   listContent: { paddingVertical: 12, paddingHorizontal: 10 },
 
-  row: { flexDirection: 'row', marginBottom: 6 },
   rowMine:   { justifyContent: 'flex-end' },
   rowTheirs: { justifyContent: 'flex-start' },
 
