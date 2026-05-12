@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
-import { ActivityIndicator, View } from 'react-native'
+import { ActivityIndicator, View, Text } from 'react-native'
 import { useAuth } from '../hooks/useAuth'
 
 import LoginScreen    from '../screens/LoginScreen'
@@ -12,6 +12,8 @@ import MatchesScreen  from '../screens/MatchesScreen'
 import ProfileScreen  from '../screens/ProfileScreen'
 import ChatScreen     from '../screens/ChatScreen'
 import PropertyDetailScreen from "../screens/PropertyDetailScreen"
+import NotificationsScreen  from '../screens/NotificationsScreen'
+import { useNotifications } from '../hooks/useNotifications'
 
 const Stack = createNativeStackNavigator()
 const Tab   = createBottomTabNavigator()
@@ -50,8 +52,46 @@ function MainTabs() {
     >
       <Tab.Screen name="Feed"    component={FeedScreen}    options={{ title: 'Descubrir' }} />
       <Tab.Screen name="Matches" component={MatchesScreen} options={{ title: 'Solicitudes' }} />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          title: 'Avisos',
+          tabBarIcon: ({ color, size, focused }) => (
+            <NotifTabIcon color={color} size={size} focused={focused} />
+          ),
+        }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
+  )
+}
+
+
+/**
+ * Icono de la tab Notificaciones con badge dinámico.
+ * Vive aquí porque el badge se calcula desde el hook useNotifications.
+ */
+function NotifTabIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
+  const { unreadCount } = useNotifications()
+  const name = focused ? 'notifications' : 'notifications-outline'
+  return (
+    <View>
+      <Ionicons name={name as any} size={size} color={color} />
+      {unreadCount > 0 && (
+        <View style={{
+          position: 'absolute', top: -3, right: -8,
+          minWidth: 16, height: 16, paddingHorizontal: 4,
+          borderRadius: 8, backgroundColor: '#ef4444',
+          alignItems: 'center', justifyContent: 'center',
+          borderWidth: 2, borderColor: '#fff',
+        }}>
+          <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>
+            {unreadCount > 9 ? '9+' : String(unreadCount)}
+          </Text>
+        </View>
+      )}
+    </View>
   )
 }
 
