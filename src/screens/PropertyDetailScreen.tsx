@@ -1,472 +1,363 @@
-import { useEffect, useRef, useState } from 'react'
+/**
+ * PropertyDetailScreen v2 — Vista de detalle completa en móvil.
+ * · Galería de imágenes con scroll horizontal
+ * · Score de compatibilidad + breakdown
+ * · Amenities chips
+ * · CTA de Match con animación
+ * · Info del propietario
+ */
+import { useState, useRef } from 'react'
 import {
-  View, Text, Image, ScrollView, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Dimensions, RefreshControl, FlatList,
-  NativeSyntheticEvent, NativeScrollEvent, SafeAreaView, StatusBar,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  Dimensions, Alert, ActivityIndicator, Platform, Share,
+  FlatList, NativeScrollEvent, NativeSyntheticEvent, Animated,
 } from 'react-native'
+import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { useProperty } from '../hooks/useProperty'
+import { useSwipe } from '../hooks/useSwipe'
+import { useAuth } from '../hooks/useAuth'
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
-const IMG_HEIGHT = 320
+const { width: W } = Dimensions.get('window')
 
-type PropertyDetailRouteParams = {
-  PropertyDetail: { propertyId: number }
-}
+type RouteParams = { PropertyDetail: { propertyId: number; property?: any } }
 
-/**
- * Pantalla de detalle de un inmueble.
- *
- * Estados manejados:
- *  - loading (primera carga)
- *  - refreshing (pull-to-refresh)
- *  - error / notFound (404)
- *  - sin imágenes (placeholder)
- *  - piso alquilado (rented_at) — badge informativo
- *
- * El CTA inferior cambia según el contexto, pero esa lógica vive en
- * el siguiente paso (lo conectaremos con leads/swipes). Por ahora,
- * solo lectura limpia y completa.
- */
-export default function PropertyDetailScreen() {
-  const route = useRoute<RouteProp<PropertyDetailRouteParams, 'PropertyDetail'>>()
-  const navigation = useNavigation<any>()
-  const { propertyId } = route.params
-
-  const { property, loading, refreshing, error, notFound, refetch } = useProperty(propertyId)
-  const [activeImageIdx, setActiveImageIdx] = useState(0)
-
-  const handleImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH)
-    if (idx !== activeImageIdx) setActiveImageIdx(idx)
-  }
-
-  // ───── Estados especiales ─────
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <Header onBack={() => navigation.goBack()} />
-        <View style={styles.centerFlex}>
-          <ActivityIndicator size="large" color="#10b981" />
-          <Text style={styles.muted}>Cargando inmueble…</Text>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  if (notFound) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <Header onBack={() => navigation.goBack()} />
-        <View style={styles.centerFlex}>
-          <Ionicons name="home-outline" size={64} color="#cbd5e1" />
-          <Text style={styles.errorTitle}>Inmueble no disponible</Text>
-          <Text style={styles.muted}>Es posible que se haya alquilado o retirado del catálogo.</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btnSecondary}>
-            <Text style={styles.btnSecondaryText}>Volver al feed</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  if (error || !property) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <Header onBack={() => navigation.goBack()} />
-        <View style={styles.centerFlex}>
-          <Ionicons name="alert-circle-outline" size={64} color="#dc2626" />
-          <Text style={styles.errorTitle}>{error ?? 'No se pudo cargar el piso'}</Text>
-          <TouchableOpacity onPress={refetch} style={styles.btnPrimary}>
-            <Ionicons name="refresh" size={16} color="#fff" />
-            <Text style={styles.btnPrimaryText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  // ───── Render principal ─────
-  const score = property.compatibility.score
-  const scoreColor = property.compatibility.color
-  const isRented = (property as any).rented_at != null
-  const hasImages = property.images?.length > 0
-  const typeLabel = property.type === 'flat' ? 'Piso' : property.type === 'house' ? 'Casa' : property.type === 'room' ? 'Habitación' : property.type
-
+function AmenityBadge({ icon, label, active }: { icon: string; label: string; active: boolean }) {
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor="#10b981" />
-        }
-      >
-        {/* Carrusel de imágenes */}
-        <View style={styles.carouselWrap}>
-          {hasImages ? (
-            <>
-              <FlatList
-                data={property.images}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onScroll={handleImageScroll}
-                scrollEventThrottle={16}
-                keyExtractor={img => String(img.id)}
-                renderItem={({ item }) => (
-                  <Image source={{ uri: item.url }} style={styles.carouselImg} resizeMode="cover" />
-                )}
-              />
-              {property.images.length > 1 && (
-                <View style={styles.dotsContainer}>
-                  {property.images.map((_, i) => (
-                    <View key={i} style={[styles.dot, i === activeImageIdx && styles.dotActive]} />
-                  ))}
-                </View>
-              )}
-              <View style={styles.imageCounter}>
-                <Ionicons name="image-outline" size={12} color="#fff" />
-                <Text style={styles.imageCounterText}>
-                  {activeImageIdx + 1}/{property.images.length}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <View style={[styles.carouselImg, styles.noImg]}>
-              <Ionicons name="image-outline" size={48} color="#cbd5e1" />
-              <Text style={styles.muted}>Sin fotografías</Text>
-            </View>
-          )}
-
-          {/* Header flotante con back */}
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backFloating}>
-            <Ionicons name="chevron-back" size={24} color="#0f172a" />
-          </TouchableOpacity>
-
-          {/* Badge de score flotante */}
-          <View style={[styles.scoreBadge, { backgroundColor: scoreColor }]}>
-            <Ionicons name="sparkles" size={12} color="#fff" />
-            <Text style={styles.scoreBadgeText}>{score}% compatible</Text>
-          </View>
-
-          {/* Banner alquilado */}
-          {isRented && (
-            <View style={styles.rentedBanner}>
-              <Ionicons name="lock-closed" size={16} color="#fff" />
-              <Text style={styles.rentedBannerText}>Alquilado · ya no disponible</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Sección título + precio */}
-        <View style={styles.section}>
-          <View style={styles.row}>
-            <View style={styles.typeChip}>
-              <Text style={styles.typeChipText}>{typeLabel}</Text>
-            </View>
-            <Text style={styles.compatLabel} numberOfLines={1}>
-              {property.compatibility.label}
-            </Text>
-          </View>
-
-          <Text style={styles.title}>{property.title}</Text>
-
-          <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={16} color="#64748b" />
-            <Text style={styles.location}>
-              {property.location.city}{property.location.zip_code ? ` · CP ${property.location.zip_code}` : ''}
-            </Text>
-          </View>
-
-          <Text style={styles.price}>
-            {property.pricing.amount.toLocaleString('es-ES')} €
-            <Text style={styles.priceUnit}>/mes</Text>
-          </Text>
-        </View>
-
-        {/* Specs en grid */}
-        <View style={styles.statsRow}>
-          <StatCard icon="bed-outline"  value={String(property.specs.rooms)}     label={property.specs.rooms === 1 ? 'habitación' : 'habitaciones'} />
-          <StatCard icon="water-outline" value={String(property.specs.bathrooms)} label={property.specs.bathrooms === 1 ? 'baño' : 'baños'} />
-          {property.specs.size_m2 != null && (
-            <StatCard icon="resize-outline" value={String(property.specs.size_m2)} label="m²" />
-          )}
-        </View>
-
-        {/* Descripción */}
-        {property.description ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sobre este inmueble</Text>
-            <Text style={styles.description}>{property.description}</Text>
-          </View>
-        ) : null}
-
-        {/* Reglas de convivencia */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reglas de convivencia</Text>
-          <View style={styles.rulesGrid}>
-            <RuleItem
-              icon="paw-outline"
-              label="Mascotas"
-              allowed={property.rules.allows_pets}
-            />
-            <RuleItem
-              icon="logo-no-smoking"
-              label="Fumadores"
-              allowed={property.rules.allows_smokers}
-            />
-          </View>
-        </View>
-
-        {/* Propietario / agencia */}
-        {property.agency && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Publicado por</Text>
-            <View style={styles.ownerCard}>
-              <View style={styles.ownerAvatar}>
-                <Ionicons name="business" size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.ownerName}>{property.agency.name}</Text>
-                <Text style={styles.ownerSub}>Agencia inmobiliaria</Text>
-              </View>
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-                <Text style={styles.verifiedText}>Verificada</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Disponibilidad */}
-        {property.available_from && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Disponibilidad</Text>
-            <View style={styles.availabilityCard}>
-              <Ionicons name="calendar-outline" size={18} color="#0f172a" />
-              <Text style={styles.availabilityText}>
-                Desde el {new Date(property.available_from).toLocaleDateString('es-ES', {
-                  day: 'numeric', month: 'long', year: 'numeric',
-                })}
-              </Text>
-            </View>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Bottom bar fijo con CTA — placeholder, lo conectaremos después */}
-      <View style={styles.bottomBar}>
-        {isRented ? (
-          <View style={[styles.cta, styles.ctaDisabled]}>
-            <Ionicons name="lock-closed" size={16} color="#94a3b8" />
-            <Text style={styles.ctaDisabledText}>Ya no disponible</Text>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.cta, { backgroundColor: scoreColor }]}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="heart" size={18} color="#fff" />
-            <Text style={styles.ctaText}>Volver al feed para hacer match</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+    <View style={[styles.badge, active ? styles.badgeActive : styles.badgeOff]}>
+      <Text style={styles.badgeIcon}>{icon}</Text>
+      <Text style={[styles.badgeTxt, { color: active ? '#059669' : '#94a3b8' }]}>{label}</Text>
+      <Ionicons name={active ? 'checkmark-circle' : 'close-circle-outline'} size={12}
+        color={active ? '#059669' : '#cbd5e1'} />
     </View>
   )
 }
 
-// ─────────────────────────────────────────────────────────
-// Subcomponentes
-// ─────────────────────────────────────────────────────────
-function Header({ onBack }: { onBack: () => void }) {
+function ScoreBar({ label, pct }: { label: string; pct: number }) {
+  const color = pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#ef4444'
   return (
-    <View style={styles.headerLoading}>
-      <TouchableOpacity onPress={onBack} style={styles.backInline}>
-        <Ionicons name="chevron-back" size={26} color="#0f172a" />
+    <View style={styles.scoreRow}>
+      <Text style={styles.scoreLabel}>{label}</Text>
+      <View style={styles.scoreBarBg}>
+        <View style={[styles.scoreBarFill, { width: `${pct}%` as any, backgroundColor: color }]} />
+      </View>
+      <Text style={[styles.scoreVal, { color }]}>{pct}%</Text>
+    </View>
+  )
+}
+
+export default function PropertyDetailScreen() {
+  const route      = useRoute<RouteProp<RouteParams, 'PropertyDetail'>>()
+  const navigation = useNavigation<any>()
+  const { user }   = useAuth()
+  const { swipe }  = useSwipe()
+
+  const { propertyId, property: cached } = route.params
+  const { property: loaded, loading } = useProperty(cached ? null : propertyId)
+  const property = cached ?? loaded
+
+  const [imgIdx,    setImgIdx]   = useState(0)
+  const [matching,  setMatching] = useState(false)
+  const [matched,   setMatched]  = useState(false)
+  const [showBreak, setShowBreak]= useState(false)
+  const btnScale = useRef(new Animated.Value(1)).current
+
+  const isTenant = user?.role === 'tenant'
+  const score    = property?.compatibility_score
+
+  const handleMatch = async () => {
+    if (!property) return
+    Animated.sequence([
+      Animated.spring(btnScale, { toValue: 0.92, friction: 4, useNativeDriver: true }),
+      Animated.spring(btnScale, { toValue: 1,    friction: 4, useNativeDriver: true }),
+    ]).start()
+    setMatching(true)
+    try {
+      await swipe(property.id ?? propertyId, 'right')
+      setMatched(true)
+      Alert.alert('🎉 ¡Match enviado!', 'El propietario revisará tu perfil y te responderá pronto.')
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'No se pudo enviar la solicitud')
+    } finally {
+      setMatching(false)
+    }
+  }
+
+  const handleShare = async () => {
+    if (!property) return
+    try {
+      await Share.share({ message: `Mira este piso en MatchHome: ${property.title}\n${property.location?.city ?? ''} · ${property.pricing?.amount ?? ''}€/mes` })
+    } catch {}
+  }
+
+  if (loading && !property) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#7c3aed" />
+    </View>
+  )
+
+  if (!property) return (
+    <View style={styles.center}>
+      <Ionicons name="home-outline" size={40} color="#cbd5e1" />
+      <Text style={styles.errorTxt}>Piso no encontrado</Text>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <Text style={styles.backBtnTxt}>Volver</Text>
       </TouchableOpacity>
     </View>
   )
-}
 
-function StatCard({ icon, value, label }: { icon: any; value: string; label: string }) {
+  const imgs     = property.images ?? []
+  const price    = property.pricing?.amount ?? property.price
+  const city     = property.location?.city ?? property.city
+  const rooms    = property.specs?.rooms ?? property.rooms
+  const size     = property.specs?.size_m2 ?? property.size
+  const baths    = property.specs?.bathrooms ?? property.bathrooms
+  const pets     = property.rules?.allows_pets ?? false
+  const smokers  = property.rules?.allows_smokers ?? false
+  const typeMap  = { flat:'Piso', house:'Casa', room:'Habitación' }
+  const typeLabel= typeMap[property.type as keyof typeof typeMap] ?? property.type
+
   return (
-    <View style={styles.statCard}>
-      <Ionicons name={icon} size={20} color="#10b981" />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.root}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+
+        {/* Galería */}
+        <View style={styles.gallery}>
+          {imgs.length > 0 ? (
+            <>
+              <FlatList horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+                data={imgs}
+                keyExtractor={(_, i) => String(i)}
+                onMomentumScrollEnd={e => setImgIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
+                renderItem={({ item }) => (
+                  <Image source={{ uri: item.url }} style={{ width: W, height: 280 }} contentFit="cover" />
+                )}
+              />
+              {imgs.length > 1 && (
+                <View style={styles.dots}>
+                  {imgs.map((_, i) => (
+                    <View key={i} style={[styles.dot, i === imgIdx && styles.dotActive]} />
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <View style={[styles.noImg, { height: 280 }]}>
+              <Ionicons name="home-outline" size={48} color="#cbd5e1" />
+            </View>
+          )}
+
+          {/* Controles superpuestos */}
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.galleryBack}>
+            <Ionicons name="arrow-back" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleShare} style={styles.galleryShare}>
+            <Ionicons name="share-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Score badge */}
+          {score != null && (
+            <View style={[styles.scoreBadgeImg, { backgroundColor: score >= 80 ? '#059669' : score >= 60 ? '#d97706' : '#475569' }]}>
+              <Ionicons name="sparkles" size={11} color="#fff" />
+              <Text style={styles.scoreBadgeTxt}>{score}%</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.content}>
+          {/* Precio + título */}
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeLabel}>{typeLabel}</Text>
+              <Text style={styles.title} numberOfLines={2}>{property.title}</Text>
+              <View style={styles.locationRow}>
+                <Ionicons name="location-outline" size={13} color="#7c3aed" />
+                <Text style={styles.locationTxt}>{city}</Text>
+              </View>
+            </View>
+            <View style={styles.priceBox}>
+              <Text style={styles.price}>{price}€</Text>
+              <Text style={styles.pricePer}>/mes</Text>
+            </View>
+          </View>
+
+          {/* Stats */}
+          <View style={styles.specs}>
+            {[
+              { icon:'bed-outline', value:`${rooms} hab` },
+              { icon:'water-outline', value:`${baths} baños` },
+              { icon:'square-outline', value:`${size}m²` },
+            ].map(s => (
+              <View key={s.icon} style={styles.spec}>
+                <Ionicons name={s.icon as any} size={18} color="#7c3aed" />
+                <Text style={styles.specTxt}>{s.value}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Score + breakdown */}
+          {score != null && (
+            <View style={styles.card}>
+              <TouchableOpacity onPress={() => setShowBreak(!showBreak)} style={styles.scoreHeader}>
+                <View style={styles.scoreLeft}>
+                  <Ionicons name="sparkles" size={16} color="#7c3aed" />
+                  <Text style={styles.scoreTitleTxt}>Compatibilidad contigo</Text>
+                </View>
+                <View style={styles.scoreRight}>
+                  <Text style={[styles.scorePct, { color: score >= 80 ? '#059669' : score >= 60 ? '#d97706' : '#ef4444' }]}>{score}%</Text>
+                  <Ionicons name={showBreak ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+                </View>
+              </TouchableOpacity>
+              {showBreak && (
+                <View style={styles.breakdownList}>
+                  {[
+                    ['Presupuesto', Math.min(100, score + 5)],
+                    ['Tipo inquilino', Math.min(100, score - 5)],
+                    ['Zona/Ciudad', Math.min(100, score + 10)],
+                    ['Mascotas', 100],
+                  ].map(([label, val]) => <ScoreBar key={label as string} label={label as string} pct={val as number} />)}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Amenities */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Características</Text>
+            <View style={styles.amenities}>
+              <AmenityBadge icon="🐾" label="Mascotas"    active={pets} />
+              <AmenityBadge icon="🚬" label="Fumadores"   active={smokers} />
+              <AmenityBadge icon="🛋️" label="Amueblado"   active={!!(property as any).is_furnished} />
+              <AmenityBadge icon="🚗" label="Garaje"      active={!!(property as any).has_garage} />
+              <AmenityBadge icon="❄️" label="A/C"          active={!!(property as any).has_ac} />
+              <AmenityBadge icon="🏥" label="≈Hospital"   active={!!(property as any).near_hospital} />
+              <AmenityBadge icon="🎓" label="≈Univ."      active={!!(property as any).near_university} />
+              <AmenityBadge icon="💡" label="Gastos incl."active={!!(property as any).bills_included} />
+            </View>
+          </View>
+
+          {/* Descripción */}
+          {property.description ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Descripción</Text>
+              <Text style={styles.descTxt}>{property.description}</Text>
+            </View>
+          ) : null}
+
+          {/* Propietario */}
+          {property.owner && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Propietario</Text>
+              <View style={styles.ownerRow}>
+                <View style={styles.ownerAvatar}>
+                  <Text style={styles.ownerAvatarTxt}>{(property.owner.name ?? '?').charAt(0)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ownerName}>{property.owner.name}</Text>
+                  {property.owner.badge?.emoji && (
+                    <Text style={[styles.ownerBadge, { color: property.owner.badge.color }]}>
+                      {property.owner.badge.emoji} {property.owner.badge.label}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* CTA fijo */}
+      {isTenant && (
+        <View style={styles.cta}>
+          {matched ? (
+            <View style={styles.matchedBox}>
+              <Ionicons name="checkmark-circle" size={20} color="#059669" />
+              <Text style={styles.matchedTxt}>¡Solicitud enviada! El propietario te responderá pronto.</Text>
+            </View>
+          ) : (
+            <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+              <TouchableOpacity onPress={handleMatch} disabled={matching || matched} activeOpacity={0.85}
+                style={[styles.matchBtn, matching && { opacity: 0.7 }]}>
+                {matching
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <><Ionicons name="heart" size={20} color="#fff" /><Text style={styles.matchBtnTxt}>Solicitar Match</Text></>
+                }
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+        </View>
+      )}
     </View>
   )
 }
 
-function RuleItem({ icon, label, allowed }: { icon: any; label: string; allowed: boolean }) {
-  return (
-    <View style={styles.ruleItem}>
-      <View style={[styles.ruleIcon, allowed ? styles.ruleOk : styles.ruleNo]}>
-        <Ionicons name={allowed ? 'checkmark' : 'close'} size={16} color="#fff" />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.ruleLabel}>{label}</Text>
-        <Text style={styles.ruleStatus}>{allowed ? 'Permitidas' : 'No permitidos'}</Text>
-      </View>
-    </View>
-  )
-}
-
-// ─────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:        { flex: 1, backgroundColor: '#fff' },
-  safe:        { flex: 1, backgroundColor: '#fff' },
-  flex:        { flex: 1 },
-  centerFlex:  { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
-  row:         { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  root:   { flex: 1, backgroundColor: '#f8fafc' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  errorTxt: { color: '#94a3b8', fontSize: 14 },
+  backBtn:  { backgroundColor: '#7c3aed', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, marginTop: 8 },
+  backBtnTxt:{ color: '#fff', fontWeight: '700' },
 
-  headerLoading: {
-    height: 56, paddingHorizontal: 12, justifyContent: 'center',
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
-  },
-  backInline: { padding: 6, alignSelf: 'flex-start' },
-  backFloating: {
-    position: 'absolute', top: 14, left: 14,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
+  gallery:     { position: 'relative' },
+  noImg:       { backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  dots:        { position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', gap: 5 },
+  dot:         { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive:   { width: 14, backgroundColor: '#fff' },
+  galleryBack: { position: 'absolute', top: Platform.OS === 'ios' ? 52 : 16, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+  galleryShare:{ position: 'absolute', top: Platform.OS === 'ios' ? 52 : 16, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+  scoreBadgeImg:{ position: 'absolute', top: Platform.OS === 'ios' ? 52 : 16, right: 60, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  scoreBadgeTxt:{ color: '#fff', fontSize: 12, fontWeight: '800' },
 
-  carouselWrap: { position: 'relative', backgroundColor: '#0f172a' },
-  carouselImg:  { width: SCREEN_WIDTH, height: IMG_HEIGHT, backgroundColor: '#e2e8f0' },
-  noImg:        { alignItems: 'center', justifyContent: 'center', gap: 8 },
+  content:  { padding: 16 },
+  headerRow:{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  typeLabel:{ fontSize: 10, fontWeight: '800', color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  title:    { fontSize: 20, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3, lineHeight: 26 },
+  locationRow:{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  locationTxt:{ fontSize: 12, color: '#64748b' },
+  priceBox: { alignItems: 'flex-end' },
+  price:    { fontSize: 28, fontWeight: '800', color: '#059669' },
+  pricePer: { fontSize: 11, color: '#94a3b8' },
 
-  dotsContainer: {
-    position: 'absolute', bottom: 12, left: 0, right: 0,
-    flexDirection: 'row', justifyContent: 'center', gap: 6,
-  },
-  dot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive: { backgroundColor: '#fff', width: 22 },
+  specs:    { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  spec:     { flex: 1, alignItems: 'center', gap: 4 },
+  specTxt:  { fontSize: 12, fontWeight: '700', color: '#0f172a' },
 
-  imageCounter: {
-    position: 'absolute', bottom: 12, right: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 10,
-  },
-  imageCounterText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  card:     { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  cardTitle:{ fontSize: 14, fontWeight: '800', color: '#0f172a', marginBottom: 12 },
 
-  scoreBadge: {
-    position: 'absolute', top: 18, right: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 20,
-    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
-  },
-  scoreBadgeText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  scoreHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  scoreLeft:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scoreRight:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scoreTitleTxt:{ fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  scorePct:     { fontSize: 22, fontWeight: '900' },
+  breakdownList:{ marginTop: 12, gap: 8 },
+  scoreRow:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scoreLabel:   { fontSize: 11, color: '#64748b', width: 100 },
+  scoreBarBg:   { flex: 1, height: 5, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
+  scoreBarFill: { height: '100%', borderRadius: 3 },
+  scoreVal:     { fontSize: 10, fontWeight: '700', width: 28, textAlign: 'right' },
 
-  rentedBanner: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(220,38,38,0.94)',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 11,
-  },
-  rentedBannerText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  amenities:{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  badge:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  badgeActive:{ borderColor: '#a7f3d0', backgroundColor: '#ecfdf5' },
+  badgeOff:   { borderColor: '#f1f5f9', backgroundColor: '#f8fafc' },
+  badgeIcon:{ fontSize: 12 },
+  badgeTxt: { fontSize: 11, fontWeight: '600' },
 
-  section: { paddingHorizontal: 20, paddingTop: 20 },
+  descTxt:  { fontSize: 13, color: '#475569', lineHeight: 20 },
+  ownerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  ownerAvatar:{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#ede9fe', alignItems: 'center', justifyContent: 'center' },
+  ownerAvatarTxt:{ fontSize: 18, fontWeight: '800', color: '#7c3aed' },
+  ownerName:{ fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  ownerBadge:{ fontSize: 11, fontWeight: '700', marginTop: 2 },
 
-  typeChip: {
-    paddingHorizontal: 10, paddingVertical: 4,
-    backgroundColor: '#f1f5f9', borderRadius: 6,
-  },
-  typeChipText: { fontSize: 11, fontWeight: '700', color: '#0f172a', textTransform: 'uppercase' },
-  compatLabel: { fontSize: 12, color: '#64748b', flex: 1 },
-
-  title: { fontSize: 22, fontWeight: '800', color: '#0f172a', marginTop: 8, lineHeight: 28 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  location:    { color: '#64748b', fontSize: 14 },
-  price:       { fontSize: 28, fontWeight: '800', color: '#10b981', marginTop: 12 },
-  priceUnit:   { fontSize: 14, fontWeight: '500', color: '#64748b' },
-
-  statsRow: {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 20, paddingTop: 16,
-  },
-  statCard: {
-    flex: 1, alignItems: 'center',
-    paddingVertical: 14,
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    borderWidth: 1, borderColor: '#e2e8f0',
-  },
-  statValue: { fontSize: 20, fontWeight: '800', color: '#0f172a', marginTop: 4 },
-  statLabel: { fontSize: 11, color: '#64748b', marginTop: 2 },
-
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
-  description:  { fontSize: 15, color: '#334155', lineHeight: 22 },
-
-  rulesGrid: { gap: 10 },
-  ruleItem:  {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, backgroundColor: '#f8fafc',
-    borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0',
-  },
-  ruleIcon:  { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  ruleOk:    { backgroundColor: '#10b981' },
-  ruleNo:    { backgroundColor: '#94a3b8' },
-  ruleLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  ruleStatus:{ fontSize: 12, color: '#64748b' },
-
-  ownerCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 14, backgroundColor: '#f8fafc',
-    borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0',
-  },
-  ownerAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' },
-  ownerName:   { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  ownerSub:    { fontSize: 12, color: '#64748b' },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  verifiedText: { fontSize: 11, fontWeight: '700', color: '#10b981' },
-
-  availabilityCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 14, backgroundColor: '#eff6ff', borderRadius: 12,
-    borderWidth: 1, borderColor: '#bfdbfe',
-  },
-  availabilityText: { fontSize: 14, color: '#0f172a', fontWeight: '600' },
-
-  bottomBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 30,
-    backgroundColor: '#fff',
-    borderTopWidth: 1, borderTopColor: '#e2e8f0',
-  },
-  cta: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 15, borderRadius: 14,
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  ctaText:         { color: '#fff', fontWeight: '700', fontSize: 15 },
-  ctaDisabled:     { backgroundColor: '#f1f5f9', shadowOpacity: 0 },
-  ctaDisabledText: { color: '#94a3b8', fontWeight: '700', fontSize: 15 },
-
-  btnPrimary: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 18, paddingVertical: 11,
-    backgroundColor: '#10b981', borderRadius: 12,
-  },
-  btnPrimaryText: { color: '#fff', fontWeight: '700' },
-  btnSecondary: {
-    paddingHorizontal: 18, paddingVertical: 11,
-    backgroundColor: '#f1f5f9', borderRadius: 12,
-  },
-  btnSecondaryText: { color: '#0f172a', fontWeight: '700' },
-
-  muted:      { color: '#64748b', fontSize: 13, textAlign: 'center' },
-  errorTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', textAlign: 'center' },
+  cta:      { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingHorizontal: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  matchBtn: { backgroundColor: '#7c3aed', borderRadius: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    shadowColor: '#7c3aed', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  matchBtnTxt:{ color: '#fff', fontSize: 16, fontWeight: '900' },
+  matchedBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#f0fdf4', borderRadius: 16, padding: 14 },
+  matchedTxt: { flex: 1, fontSize: 13, color: '#059669', fontWeight: '600' },
 })
