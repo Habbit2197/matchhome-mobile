@@ -20,6 +20,7 @@ import ProfileScreen        from '../screens/ProfileScreen'
 import ChatScreen           from '../screens/ChatScreen'
 import PropertyDetailScreen from '../screens/PropertyDetailScreen'
 import PublicProfileScreen  from '../screens/PublicProfileScreen'
+import TenantProfileEditScreen from '../screens/TenantProfileEditScreen'
 import NotificationsScreen  from '../screens/NotificationsScreen'
 import { useNotifications } from '../hooks/useNotifications'
 import WelcomeOverlay       from '../components/animations/WelcomeOverlay'
@@ -146,6 +147,8 @@ function MainStack() {
       <Stack.Screen name="Chat"           component={ChatScreen}
         options={{ animation: 'slide_from_bottom', gestureDirection: 'vertical' }} />
       <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
+      <Stack.Screen name="TenantProfileEdit" component={TenantProfileEditScreen}
+        options={{ headerShown: true, title: "Editar Perfil", headerTintColor: "#7c3aed" }} />
       <Stack.Screen name="PublicProfile"  component={PublicProfileScreen}
         options={{ headerShown: true, headerBackTitle: 'Volver', headerTintColor: '#7c3aed' }} />
     </Stack.Navigator>
