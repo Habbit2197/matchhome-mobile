@@ -1,73 +1,101 @@
+/**
+ * UnlockChatSheet v2 — Modal nativo para desbloquear chat (5€).
+ * Props actualizadas: isVisible/onCancel/onConfirm (con aliases para retrocompat).
+ */
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  TouchableWithoutFeedback, ActivityIndicator, Platform,
+  TouchableWithoutFeedback, ActivityIndicator,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
 import type { Lead } from '../types'
 
 interface Props {
-  visible: boolean
-  lead: Lead | null
-  isPaying: boolean
-  error: string | null
-  onClose: () => void
-  onConfirm: () => void
+  // Props nuevas (MatchesScreen v2)
+  isVisible?: boolean
+  onCancel?:  () => void
+  onConfirm?: () => void
+  // Props antiguas (retrocompatibilidad)
+  visible?:   boolean
+  onClose?:   () => void
+  // Comunes
+  lead:       Lead | null
+  isPaying:   boolean
+  error?:     string | null
 }
 
 export default function UnlockChatSheet({
-  visible, lead, isPaying, error, onClose, onConfirm,
+  isVisible, visible, lead, isPaying, error,
+  onCancel, onClose, onConfirm,
 }: Props) {
+  const show    = isVisible ?? visible ?? false
+  const dismiss = onCancel ?? onClose ?? (() => {})
+  const confirm = onConfirm ?? (() => {})
+
   if (!lead?.property) return null
 
   const property = lead.property
-  const cover = property.images?.[0]?.url
+  const cover    = property.images?.[0]?.url
+  const score    = lead.compatibility_score
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={isPaying ? undefined : onClose}
-    >
-      <TouchableWithoutFeedback onPress={isPaying ? undefined : onClose}>
+    <Modal visible={show} transparent animationType="slide"
+      onRequestClose={isPaying ? undefined : dismiss}>
+      <TouchableWithoutFeedback onPress={isPaying ? undefined : dismiss}>
         <View style={styles.backdrop}>
           <TouchableWithoutFeedback>
             <View style={styles.sheet}>
+              {/* Handle */}
               <View style={styles.handle} />
 
+              {/* Icono principal */}
               <View style={styles.iconBox}>
-                <Ionicons name="chatbubble-ellipses" size={28} color="#10b981" />
+                <Ionicons name="chatbubble-ellipses" size={28} color="#7c3aed" />
               </View>
 
-              <Text style={styles.title}>Iniciar conversación</Text>
+              <Text style={styles.title}>Desbloquear chat</Text>
               <Text style={styles.subtitle}>
-                Paga 5€ para desbloquear el chat con el propietario y comenzar a hablar sobre este piso.
+                Paga 5€ para hablar directamente con el propietario y coordinar una visita.
               </Text>
 
+              {/* Piso */}
               <View style={styles.propertyRow}>
-                {cover ? (
-                  <Image source={cover} style={styles.propertyImage} contentFit="cover" />
-                ) : (
-                  <View style={[styles.propertyImage, styles.propertyImagePh]}>
-                    <Ionicons name="image-outline" size={20} color="#cbd5e1" />
-                  </View>
-                )}
+                {cover
+                  ? <Image source={{ uri: cover }} style={styles.propertyImg} contentFit="cover" />
+                  : <View style={[styles.propertyImg, styles.propertyImgPh]}>
+                      <Ionicons name="image-outline" size={20} color="#cbd5e1" />
+                    </View>
+                }
                 <View style={{ flex: 1 }}>
                   <Text style={styles.propertyTitle} numberOfLines={1}>{property.title}</Text>
                   <Text style={styles.propertyMeta}>
-                    {property.location.city} · {property.specs.rooms} hab · {property.specs.size_m2}m²
+                    {property.location?.city} · {property.specs?.rooms} hab · {property.specs?.size_m2}m²
                   </Text>
-                  <Text style={styles.propertyPrice}>{property.pricing.amount}€/mes</Text>
+                  {score != null && (
+                    <View style={styles.scorePill}>
+                      <Text style={styles.scoreTxt}>{score}% compatibilidad</Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
-              <View style={styles.bullets}>
-                <Bullet text="Chat directo con el propietario" />
-                <Bullet text="Sin intermediarios ni comisiones de agencia" />
-                <Bullet text="Pago único · sin suscripciones" />
+              {/* Precio */}
+              <View style={styles.priceBox}>
+                <Text style={styles.priceBig}>5€</Text>
+                <Text style={styles.priceSub}>Pago único · Sin suscripción</Text>
               </View>
 
+              {/* Beneficios */}
+              <View style={styles.benefits}>
+                {['Chat directo con el propietario','Coordinar visitas','Negociar condiciones','Contratos digitales'].map(b => (
+                  <View key={b} style={styles.benefitRow}>
+                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                    <Text style={styles.benefitTxt}>{b}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Error */}
               {error && (
                 <View style={styles.errorBox}>
                   <Ionicons name="alert-circle" size={16} color="#dc2626" />
@@ -75,30 +103,25 @@ export default function UnlockChatSheet({
                 </View>
               )}
 
-              <TouchableOpacity
-                style={[styles.payBtn, isPaying && styles.payBtnDisabled]}
-                onPress={onConfirm}
-                disabled={isPaying}
-                activeOpacity={0.85}
-              >
-                {isPaying ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="lock-open" size={18} color="#fff" />
-                    <Text style={styles.payBtnTxt}>Pagar 5€ y abrir chat</Text>
-                  </>
-                )}
+              {/* Botones */}
+              <TouchableOpacity onPress={confirm} disabled={isPaying}
+                style={[styles.payBtn, isPaying && styles.payBtnDisabled]} activeOpacity={0.85}>
+                {isPaying
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <><Ionicons name="lock-open" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.payBtnTxt}>Pagar 5€ y abrir chat</Text></>
+                }
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={onClose}
-                disabled={isPaying}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cancelTxt}>Ahora no</Text>
+              <TouchableOpacity onPress={dismiss} disabled={isPaying} style={styles.cancelBtn}>
+                <Text style={styles.cancelTxt}>Cancelar</Text>
               </TouchableOpacity>
+
+              {/* Garantía */}
+              <View style={styles.guarantee}>
+                <Ionicons name="shield-checkmark-outline" size={13} color="#94a3b8" />
+                <Text style={styles.guaranteeTxt}>Si el propietario no responde, te devolvemos el dinero</Text>
+              </View>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -107,70 +130,45 @@ export default function UnlockChatSheet({
   )
 }
 
-function Bullet({ text }: { text: string }) {
-  return (
-    <View style={styles.bulletRow}>
-      <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-      <Text style={styles.bulletTxt}>{text}</Text>
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-
   sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12,
+    alignItems: 'center',
   },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: '#e2e8f0',
-    alignSelf: 'center', marginBottom: 20,
-  },
-  iconBox: {
-    width: 56, height: 56, borderRadius: 18,
-    backgroundColor: '#d1fae5',
-    alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'center', marginBottom: 16,
-  },
-  title:    { fontSize: 22, fontWeight: '800', color: '#0f172a', textAlign: 'center', letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 20, marginBottom: 20 },
+  handle: { width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, marginBottom: 20 },
+  iconBox:{ width: 64, height: 64, borderRadius: 20, backgroundColor: '#f5f3ff', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  title:   { fontSize: 20, fontWeight: '800', color: '#0f172a', marginBottom: 6, textAlign: 'center' },
+  subtitle:{ fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 16, lineHeight: 19 },
 
-  propertyRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#f8fafc', borderRadius: 16, padding: 12,
-    borderWidth: 1, borderColor: '#f1f5f9',
-  },
-  propertyImage:   { width: 56, height: 56, borderRadius: 10, backgroundColor: '#e2e8f0' },
-  propertyImagePh: { alignItems: 'center', justifyContent: 'center' },
-  propertyTitle:   { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  propertyMeta:    { fontSize: 12, color: '#64748b', marginTop: 2 },
-  propertyPrice:   { fontSize: 13, fontWeight: '700', color: '#0f172a', marginTop: 4 },
+  propertyRow:  { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f8fafc', borderRadius: 16, padding: 12, width: '100%', marginBottom: 16 },
+  propertyImg:  { width: 60, height: 60, borderRadius: 12 },
+  propertyImgPh:{ backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  propertyTitle:{ fontSize: 13, fontWeight: '700', color: '#0f172a', marginBottom: 3 },
+  propertyMeta: { fontSize: 11, color: '#94a3b8' },
+  scorePill:    { backgroundColor: '#f5f3ff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, alignSelf: 'flex-start', marginTop: 4 },
+  scoreTxt:     { fontSize: 10, fontWeight: '700', color: '#7c3aed' },
 
-  bullets:   { marginTop: 20, gap: 8 },
-  bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bulletTxt: { fontSize: 13, color: '#475569' },
+  priceBox: { alignItems: 'center', marginBottom: 16 },
+  priceBig: { fontSize: 42, fontWeight: '900', color: '#0f172a', letterSpacing: -1 },
+  priceSub: { fontSize: 12, color: '#94a3b8', marginTop: -4 },
 
-  errorBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#fef2f2', borderRadius: 12, padding: 12, marginTop: 16,
-  },
-  errorTxt: { color: '#991b1b', fontSize: 12, flex: 1 },
+  benefits:    { width: '100%', gap: 8, marginBottom: 20 },
+  benefitRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  benefitTxt:  { fontSize: 13, color: '#374151', fontWeight: '500' },
 
-  payBtn: {
-    marginTop: 20,
-    backgroundColor: '#10b981',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 16, borderRadius: 14,
-  },
-  payBtnDisabled: { opacity: 0.7 },
-  payBtnTxt:      { color: '#fff', fontSize: 15, fontWeight: '700' },
+  errorBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef2f2', borderRadius: 12, padding: 12, width: '100%', marginBottom: 12 },
+  errorTxt: { fontSize: 12, color: '#dc2626', fontWeight: '600', flex: 1 },
 
-  cancelBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
-  cancelTxt: { color: '#64748b', fontSize: 14, fontWeight: '600' },
+  payBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#7c3aed', borderRadius: 18, paddingVertical: 16, width: '100%', marginBottom: 10,
+    shadowColor: '#7c3aed', shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  payBtnDisabled:{ opacity: 0.7 },
+  payBtnTxt:     { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  cancelBtn: { paddingVertical: 12, width: '100%', alignItems: 'center', marginBottom: 8 },
+  cancelTxt: { fontSize: 14, color: '#94a3b8', fontWeight: '600' },
+
+  guarantee:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  guaranteeTxt:{ fontSize: 11, color: '#94a3b8', flex: 1, textAlign: 'center' },
 })
