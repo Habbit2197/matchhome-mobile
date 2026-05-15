@@ -1,60 +1,53 @@
 /**
- * RootNavigator — con transiciones de pantalla animadas.
- * Stack: slide desde derecha (estándar iOS/Android)
- * Auth: fade suave
- * Tab: animación de shift en iconos
+ * RootNavigator v3 — Navegación basada en rol.
+ * 
+ * TENANT:   Feed | Matches | Favoritos | Notificaciones | Perfil
+ * LANDLORD: Inicio | Solicitudes | Notificaciones | Perfil
+ * OTROS:    Feed | Matches | Notificaciones | Perfil
  */
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { ActivityIndicator, View, Text, Animated } from 'react-native'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth }           from '../hooks/useAuth'
 import { useEffect, useRef, useState } from 'react'
 
-import LoginScreen          from '../screens/LoginScreen'
-import RegisterScreen       from '../screens/RegisterScreen'
-import FeedScreen           from '../screens/FeedScreen'
-import MatchesScreen        from '../screens/MatchesScreen'
-import ProfileScreen        from '../screens/ProfileScreen'
-import ChatScreen           from '../screens/ChatScreen'
-import PropertyDetailScreen from '../screens/PropertyDetailScreen'
-import PublicProfileScreen  from '../screens/PublicProfileScreen'
+import LoginScreen             from '../screens/LoginScreen'
+import RegisterScreen          from '../screens/RegisterScreen'
+import FeedScreen              from '../screens/FeedScreen'
+import MatchesScreen           from '../screens/MatchesScreen'
+import ProfileScreen           from '../screens/ProfileScreen'
+import ChatScreen              from '../screens/ChatScreen'
+import PropertyDetailScreen    from '../screens/PropertyDetailScreen'
+import PublicProfileScreen     from '../screens/PublicProfileScreen'
+import NotificationsScreen     from '../screens/NotificationsScreen'
+import FavoritesScreen         from '../screens/FavoritesScreen'
+import LandlordHomeScreen      from '../screens/LandlordHomeScreen'
 import TenantProfileEditScreen from '../screens/TenantProfileEditScreen'
-import NotificationsScreen  from '../screens/NotificationsScreen'
-import { useNotifications } from '../hooks/useNotifications'
+import { useNotifications }    from '../hooks/useNotifications'
 import { usePushNotifications } from '../hooks/usePushNotifications'
-import WelcomeOverlay       from '../components/animations/WelcomeOverlay'
+import WelcomeOverlay          from '../components/animations/WelcomeOverlay'
 
 const Stack = createNativeStackNavigator()
 const Tab   = createBottomTabNavigator()
 
-// ── Auth stack — transición fade ─────────────────────────────────
+// ── Auth stack ────────────────────────────────────────────────────
 function AuthStack() {
   return (
-    <Stack.Navigator screenOptions={{
-      headerShown: false,
-      animation: 'fade',
-    }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="Login"    component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen}
-        options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="Register" component={RegisterScreen} options={{ animation: 'slide_from_bottom' }} />
     </Stack.Navigator>
   )
 }
 
-// ── Tab icon con animación ────────────────────────────────────────
-function AnimatedTabIcon({ name, focused, color, size }: {
-  name: string; focused: boolean; color: string; size: number
-}) {
+// ── Icono animado para tabs ────────────────────────────────────────
+function AnimatedTabIcon({ name, focused, color, size }: { name: string; focused: boolean; color: string; size: number }) {
   const scale = useRef(new Animated.Value(1)).current
   useEffect(() => {
-    Animated.spring(scale, {
-      toValue: focused ? 1.15 : 1,
-      friction: 6, tension: 200, useNativeDriver: true,
-    }).start()
+    Animated.spring(scale, { toValue: focused ? 1.15 : 1, friction: 6, tension: 200, useNativeDriver: true }).start()
   }, [focused])
-
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Ionicons name={name as any} size={size} color={color} />
@@ -62,8 +55,8 @@ function AnimatedTabIcon({ name, focused, color, size }: {
   )
 }
 
-// ── Notif badge ───────────────────────────────────────────────────
-function NotifTabIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
+// ── Badge de notificaciones con bounce ────────────────────────────
+function NotifIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
   const { unreadCount } = useNotifications()
   const bounce = useRef(new Animated.Value(0)).current
   useEffect(() => {
@@ -71,13 +64,12 @@ function NotifTabIcon({ color, size, focused }: { color: string; size: number; f
       Animated.loop(
         Animated.sequence([
           Animated.timing(bounce, { toValue: -4, duration: 300, useNativeDriver: true }),
-          Animated.timing(bounce, { toValue:  0, duration: 300, useNativeDriver: true }),
+          Animated.timing(bounce, { toValue: 0,  duration: 300, useNativeDriver: true }),
         ]),
         { iterations: 2 }
       ).start()
     }
   }, [unreadCount])
-
   return (
     <Animated.View style={{ transform: [{ translateY: bounce }] }}>
       <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={size} color={color} />
@@ -98,35 +90,87 @@ function NotifTabIcon({ color, size, focused }: { color: string; size: number; f
   )
 }
 
-// ── Main tabs ─────────────────────────────────────────────────────
-function MainTabs() {
+// ── Tab options comunes ────────────────────────────────────────────
+const TAB_OPTIONS = {
+  headerShown:           false,
+  tabBarActiveTintColor: '#7c3aed',
+  tabBarInactiveTintColor:'#94a3b8',
+  tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const },
+  tabBarStyle: {
+    height: 64, paddingTop: 6, paddingBottom: 8,
+    borderTopColor: '#f1f5f9', backgroundColor: '#fff',
+  },
+}
+
+// ── Tabs para INQUILINO ───────────────────────────────────────────
+function TenantTabs() {
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarActiveTintColor:   '#7c3aed',
-        tabBarInactiveTintColor: '#94a3b8',
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        tabBarStyle: {
-          height: 64, paddingTop: 6, paddingBottom: 8,
-          borderTopColor: '#f1f5f9',
-          backgroundColor: '#fff',
-        },
-        tabBarIcon: ({ color, focused, size }) => {
-          const icons: Record<string, [string, string]> = {
-            Feed:          ['sparkles',      'sparkles-outline'],
-            Matches:       ['heart',         'heart-outline'],
-            Notifications: ['notifications', 'notifications-outline'],
-            Profile:       ['person',        'person-outline'],
-          }
-          const [active, inactive] = icons[route.name] ?? ['home', 'home-outline']
-          if (route.name === 'Notifications') {
-            return <NotifTabIcon color={color} size={size} focused={focused} />
-          }
-          return <AnimatedTabIcon name={focused ? active : inactive} focused={focused} color={color} size={size} />
-        },
-      })}
-    >
+    <Tab.Navigator screenOptions={({ route }) => ({
+      ...TAB_OPTIONS,
+      tabBarIcon: ({ color, focused, size }) => {
+        const icons: Record<string, [string, string]> = {
+          Feed:          ['sparkles',      'sparkles-outline'],
+          Matches:       ['heart',         'heart-outline'],
+          Favorites:     ['bookmark',      'bookmark-outline'],
+          Notifications: ['notifications', 'notifications-outline'],
+          Profile:       ['person',        'person-outline'],
+        }
+        if (route.name === 'Notifications') return <NotifIcon color={color} size={size} focused={focused} />
+        const [active, inactive] = icons[route.name] ?? ['home', 'home-outline']
+        return <AnimatedTabIcon name={focused ? active : inactive} focused={focused} color={color} size={size} />
+      },
+    })}>
+      <Tab.Screen name="Feed"          component={FeedScreen}          options={{ title: 'Descubrir' }} />
+      <Tab.Screen name="Matches"       component={MatchesScreen}       options={{ title: 'Solicitudes' }} />
+      <Tab.Screen name="Favorites"     component={FavoritesScreen}     options={{ title: 'Guardados' }} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Avisos' }} />
+      <Tab.Screen name="Profile"       component={ProfileScreen}       options={{ title: 'Perfil' }} />
+    </Tab.Navigator>
+  )
+}
+
+// ── Tabs para PROPIETARIO ─────────────────────────────────────────
+function LandlordTabs() {
+  return (
+    <Tab.Navigator screenOptions={({ route }) => ({
+      ...TAB_OPTIONS,
+      tabBarIcon: ({ color, focused, size }) => {
+        const icons: Record<string, [string, string]> = {
+          LandlordHome:  ['home',          'home-outline'],
+          Matches:       ['people',        'people-outline'],
+          Notifications: ['notifications', 'notifications-outline'],
+          Profile:       ['person',        'person-outline'],
+        }
+        if (route.name === 'Notifications') return <NotifIcon color={color} size={size} focused={focused} />
+        const [active, inactive] = icons[route.name] ?? ['home', 'home-outline']
+        return <AnimatedTabIcon name={focused ? active : inactive} focused={focused} color={color} size={size} />
+      },
+    })}>
+      <Tab.Screen name="LandlordHome"  component={LandlordHomeScreen}  options={{ title: 'Mis pisos' }} />
+      <Tab.Screen name="Matches"       component={MatchesScreen}        options={{ title: 'Solicitudes' }} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen}  options={{ title: 'Avisos' }} />
+      <Tab.Screen name="Profile"       component={ProfileScreen}        options={{ title: 'Perfil' }} />
+    </Tab.Navigator>
+  )
+}
+
+// ── Tabs genéricos (agency, admin) ────────────────────────────────
+function DefaultTabs() {
+  return (
+    <Tab.Navigator screenOptions={({ route }) => ({
+      ...TAB_OPTIONS,
+      tabBarIcon: ({ color, focused, size }) => {
+        const icons: Record<string, [string, string]> = {
+          Feed:          ['sparkles',      'sparkles-outline'],
+          Matches:       ['heart',         'heart-outline'],
+          Notifications: ['notifications', 'notifications-outline'],
+          Profile:       ['person',        'person-outline'],
+        }
+        if (route.name === 'Notifications') return <NotifIcon color={color} size={size} focused={focused} />
+        const [active, inactive] = icons[route.name] ?? ['home', 'home-outline']
+        return <AnimatedTabIcon name={focused ? active : inactive} focused={focused} color={color} size={size} />
+      },
+    })}>
       <Tab.Screen name="Feed"          component={FeedScreen}          options={{ title: 'Descubrir' }} />
       <Tab.Screen name="Matches"       component={MatchesScreen}       options={{ title: 'Solicitudes' }} />
       <Tab.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Avisos' }} />
@@ -135,22 +179,22 @@ function MainTabs() {
   )
 }
 
-// ── Main stack con transiciones ───────────────────────────────────
-function MainStack() {
+// ── Main stack con todas las pantallas modales ────────────────────
+function MainStack({ role }: { role: string }) {
+  const TabsComponent =
+    role === 'tenant'   ? TenantTabs :
+    role === 'landlord' ? LandlordTabs :
+    DefaultTabs
+
   return (
-    <Stack.Navigator screenOptions={{
-      headerShown: false,
-      animation: 'slide_from_right',
-      gestureEnabled: true,
-      fullScreenGestureEnabled: true,
-    }}>
-      <Stack.Screen name="Tabs"           component={MainTabs} options={{ animation: 'none' }} />
-      <Stack.Screen name="Chat"           component={ChatScreen}
+    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }}>
+      <Stack.Screen name="Tabs"             component={TabsComponent} options={{ animation: 'none' }} />
+      <Stack.Screen name="Chat"             component={ChatScreen}
         options={{ animation: 'slide_from_bottom', gestureDirection: 'vertical' }} />
-      <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
+      <Stack.Screen name="PropertyDetail"   component={PropertyDetailScreen} />
       <Stack.Screen name="TenantProfileEdit" component={TenantProfileEditScreen}
-        options={{ headerShown: true, title: "Editar Perfil", headerTintColor: "#7c3aed" }} />
-      <Stack.Screen name="PublicProfile"  component={PublicProfileScreen}
+        options={{ headerShown: true, title: 'Editar Perfil', headerTintColor: '#7c3aed' }} />
+      <Stack.Screen name="PublicProfile"    component={PublicProfileScreen}
         options={{ headerShown: true, headerBackTitle: 'Volver', headerTintColor: '#7c3aed' }} />
     </Stack.Navigator>
   )
@@ -159,23 +203,19 @@ function MainStack() {
 // ── Root ──────────────────────────────────────────────────────────
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth()
-  usePushNotifications()
   const [showWelcome, setShowWelcome] = useState(false)
   const wasAuthRef = useRef(false)
   const fadeAnim   = useRef(new Animated.Value(0)).current
 
+  usePushNotifications() // Registrar push token si es dispositivo real
+
   useEffect(() => {
-    if (isAuthenticated && !wasAuthRef.current && user) {
-      setShowWelcome(true)
-    }
+    if (isAuthenticated && !wasAuthRef.current && user) setShowWelcome(true)
     wasAuthRef.current = isAuthenticated
   }, [isAuthenticated, user])
 
-  // Fade in al cargar
   useEffect(() => {
-    if (!isLoading) {
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
-    }
+    if (!isLoading) Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
   }, [isLoading])
 
   if (isLoading) return (
@@ -187,7 +227,7 @@ export default function RootNavigator() {
   return (
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <NavigationContainer>
-        {isAuthenticated ? <MainStack /> : <AuthStack />}
+        {isAuthenticated ? <MainStack role={user?.role ?? 'tenant'} /> : <AuthStack />}
         {showWelcome && user && (
           <WelcomeOverlay userName={user.name} onFinish={() => setShowWelcome(false)} />
         )}
