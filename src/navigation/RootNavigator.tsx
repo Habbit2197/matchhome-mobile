@@ -23,6 +23,7 @@ import PublicProfileScreen  from '../screens/PublicProfileScreen'
 import TenantProfileEditScreen from '../screens/TenantProfileEditScreen'
 import NotificationsScreen  from '../screens/NotificationsScreen'
 import { useNotifications } from '../hooks/useNotifications'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import WelcomeOverlay       from '../components/animations/WelcomeOverlay'
 
 const Stack = createNativeStackNavigator()
@@ -158,6 +159,7 @@ function MainStack() {
 // ── Root ──────────────────────────────────────────────────────────
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth()
+  usePushNotifications()
   const [showWelcome, setShowWelcome] = useState(false)
   const wasAuthRef = useRef(false)
   const fadeAnim   = useRef(new Animated.Value(0)).current
