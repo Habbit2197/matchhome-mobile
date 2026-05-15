@@ -23,6 +23,7 @@ import PropertyDetailScreen    from '../screens/PropertyDetailScreen'
 import PublicProfileScreen     from '../screens/PublicProfileScreen'
 import NotificationsScreen     from '../screens/NotificationsScreen'
 import FavoritesScreen         from '../screens/FavoritesScreen'
+import LandlordMatchesScreen from '../screens/LandlordMatchesScreen'
 import LandlordHomeScreen      from '../screens/LandlordHomeScreen'
 import TenantProfileEditScreen from '../screens/TenantProfileEditScreen'
 import { useNotifications }    from '../hooks/useNotifications'
@@ -147,7 +148,7 @@ function LandlordTabs() {
       },
     })}>
       <Tab.Screen name="LandlordHome"  component={LandlordHomeScreen}  options={{ title: 'Mis pisos' }} />
-      <Tab.Screen name="Matches"       component={MatchesScreen}        options={{ title: 'Solicitudes' }} />
+      <Tab.Screen name="Matches"       component={LandlordMatchesScreen} options={{ title: 'Solicitudes' }} />
       <Tab.Screen name="Notifications" component={NotificationsScreen}  options={{ title: 'Avisos' }} />
       <Tab.Screen name="Profile"       component={ProfileScreen}        options={{ title: 'Perfil' }} />
     </Tab.Navigator>
