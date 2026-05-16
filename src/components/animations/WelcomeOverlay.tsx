@@ -1,138 +1,201 @@
 /**
- * Splash de bienvenida nativo para mobile.
- *
- * Equivalente al WelcomeOverlay del web. Aparece superpuesto a la app
- * justo después del login. Saludo dinámico + barra de progreso animada
- * + fade-out. Usa AsyncStorage para mostrarse solo una vez por sesión.
+ * WelcomeOverlay v2 — Intro animada con el logo MatchHome.
+ * Secuencia:
+ *  0.0s → círculo escala desde 0
+ *  0.4s → icono MH aparece con fade+scale
+ *  0.9s → "MATCHHOME" se revela de izquierda a derecha
+ *  1.4s → tagline aparece
+ *  2.2s → todo hace fade out
+ *  2.6s → onFinish()
  */
-import { useEffect, useRef } from "react"
-import { Animated, Easing, StyleSheet, Text, View, Dimensions } from "react-native"
-import { LinearGradient } from "expo-linear-gradient"
+import { useEffect, useRef } from 'react'
+import {
+  View, Text, Animated, StyleSheet, Dimensions, Easing,
+} from 'react-native'
+import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, G, Circle } from 'react-native-svg'
 
-interface Props {
-  userName: string
-  onFinish: () => void
-  durationMs?: number
-}
+const { width: W, height: H } = Dimensions.get('window')
 
-export default function WelcomeOverlay({ userName, onFinish, durationMs = 2800 }: Props) {
-  const opacity   = useRef(new Animated.Value(0)).current   // fade del overlay completo
-  const slideY    = useRef(new Animated.Value(20)).current  // entrada del texto
-  const progress  = useRef(new Animated.Value(0)).current   // ancho de la barra
-
-  const greeting  = getGreetingByHour()
-  const firstName = (userName || "").split(" ")[0] || "Bienvenido"
-
-  useEffect(() => {
-    // Fade-in + slide-up del texto en paralelo
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(slideY,  { toValue: 0, duration: 500, delay: 100, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-    ]).start()
-
-    // Barra de carga sincronizada con durationMs
-    Animated.timing(progress, {
-      toValue: 1, duration: durationMs, delay: 200,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: false,
-    }).start()
-
-    // Fade-out tras la duración
-    const t = setTimeout(() => {
-      Animated.timing(opacity, {
-        toValue: 0, duration: 500, easing: Easing.in(Easing.cubic), useNativeDriver: true,
-      }).start(() => onFinish())
-    }, durationMs + 300)
-
-    return () => clearTimeout(t)
-  }, [durationMs, opacity, slideY, progress, onFinish])
-
-  const barWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] })
-
+// ── Logo MH como SVG (aproximación del logotipo) ─────────────────
+function MHLogo({ size = 120 }: { size?: number }) {
   return (
-    <Animated.View pointerEvents="none" style={[styles.root, { opacity }]}>
-      <LinearGradient
-        colors={["#6366f1", "#8b5cf6", "#d946ef"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
+    <Svg width={size} height={size} viewBox="0 0 200 200">
+      <Defs>
+        <SvgGradient id="mhGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%"   stopColor="#7c3aed" />
+          <Stop offset="60%"  stopColor="#6366f1" />
+          <Stop offset="100%" stopColor="#60a5fa" />
+        </SvgGradient>
+      </Defs>
+
+      {/* Letra M */}
+      <Path
+        d="M 20 155 L 20 55 Q 20 45 30 45 Q 40 45 45 55 L 75 115 L 105 55 Q 110 45 120 45 Q 130 45 130 55 L 130 155"
+        stroke="url(#mhGrad)"
+        strokeWidth="18"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
       />
 
-      <Animated.View style={[styles.center, { transform: [{ translateY: slideY }] }]}>
-        {/* Logo */}
-        <View style={styles.logoBadge}>
-          <View style={styles.logoSquare}><Text style={styles.logoLetter}>M</Text></View>
-          <Text style={styles.logoText}>MatchHome</Text>
-        </View>
+      {/* Barra vertical H izquierda */}
+      <Path
+        d="M 145 55 L 145 155"
+        stroke="url(#mhGrad)"
+        strokeWidth="18"
+        strokeLinecap="round"
+        fill="none"
+      />
 
-        {/* Saludo */}
-        <Text style={styles.greeting}>{greeting},</Text>
-        <Text style={styles.name}>{firstName} 👋</Text>
-        <Text style={styles.subtitle}>Tu próxima casa te está esperando.</Text>
+      {/* Barra central H */}
+      <Path
+        d="M 145 105 L 185 105"
+        stroke="url(#mhGrad)"
+        strokeWidth="18"
+        strokeLinecap="round"
+        fill="none"
+      />
 
-        {/* Barra de carga */}
-        <View style={styles.barTrack}>
-          <Animated.View style={[styles.barFill, { width: barWidth }]} />
-        </View>
-        <Text style={styles.loadingLabel}>CARGANDO TU ESPACIO…</Text>
+      {/* Barra vertical H derecha */}
+      <Path
+        d="M 185 55 L 185 155"
+        stroke="#60a5fa"
+        strokeWidth="18"
+        strokeLinecap="round"
+        fill="none"
+      />
+
+      {/* Punto decorativo (como en el logo original) */}
+      <Circle cx="132" cy="50" r="8" fill="#ef4444" />
+    </Svg>
+  )
+}
+
+// ── Texto animado letra a letra ───────────────────────────────────
+function AnimatedText({ text, delay, style }: { text: string; delay: number; style?: any }) {
+  const letters = text.split('')
+  const anims   = letters.map(() => useRef(new Animated.Value(0)).current)
+
+  useEffect(() => {
+    const animations = letters.map((_, i) =>
+      Animated.timing(anims[i], {
+        toValue: 1,
+        duration: 60,
+        delay: delay + i * 55,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      })
+    )
+    Animated.stagger(55, animations).start()
+  }, [])
+
+  return (
+    <View style={ss.letterRow}>
+      {letters.map((l, i) => (
+        <Animated.Text key={i}
+          style={[style, {
+            opacity: anims[i],
+            transform: [{ translateY: anims[i].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }]}>
+          {l}
+        </Animated.Text>
+      ))}
+    </View>
+  )
+}
+
+// ── Pantalla principal ────────────────────────────────────────────
+interface Props { onFinish: () => void; userName?: string }
+
+export default function WelcomeOverlay({ onFinish, userName }: Props) {
+  const bgOpacity     = useRef(new Animated.Value(1)).current
+  const circleScale   = useRef(new Animated.Value(0)).current
+  const logoOpacity   = useRef(new Animated.Value(0)).current
+  const logoScale     = useRef(new Animated.Value(0.6)).current
+  const taglineOpacity= useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.sequence([
+      // 0.0s: círculo aparece
+      Animated.spring(circleScale, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }),
+
+      // 0.4s: logo fade+scale
+      Animated.delay(100),
+      Animated.parallel([
+        Animated.timing(logoOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      ]),
+
+      // 1.4s: tagline
+      Animated.delay(200),
+      Animated.timing(taglineOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+
+      // 2.2s: esperar y hacer fade out
+      Animated.delay(900),
+      Animated.timing(bgOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+    ]).start(() => onFinish())
+  }, [])
+
+  return (
+    <Animated.View style={[ss.root, { opacity: bgOpacity }]}>
+      {/* Fondo oscuro */}
+      <View style={ss.bg} />
+
+      {/* Círculo blanco */}
+      <Animated.View style={[ss.circle, { transform: [{ scale: circleScale }] }]} />
+
+      {/* Logo */}
+      <Animated.View style={[ss.logoWrap, {
+        opacity: logoOpacity,
+        transform: [{ scale: logoScale }],
+      }]}>
+        <MHLogo size={130} />
+      </Animated.View>
+
+      {/* Texto MATCHHOME */}
+      <AnimatedText
+        text="MATCHHOME"
+        delay={700}
+        style={ss.brandTxt}
+      />
+
+      {/* Tagline */}
+      <Animated.View style={{ opacity: taglineOpacity }}>
+        <Text style={ss.tagline}>El alquiler inteligente</Text>
+      </Animated.View>
+
+      {/* Versión */}
+      <Animated.View style={[ss.versionWrap, { opacity: taglineOpacity }]}>
+        <Text style={ss.versionTxt}>v1.0</Text>
       </Animated.View>
     </Animated.View>
   )
 }
 
-function getGreetingByHour(): string {
-  const h = new Date().getHours()
-  if (h >= 5 && h < 13)  return "Buenos días"
-  if (h >= 13 && h < 21) return "Buenas tardes"
-  return "Buenas noches"
-}
+const ss = StyleSheet.create({
+  root:    { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 9999 },
+  bg:      { ...StyleSheet.absoluteFillObject, backgroundColor: '#0c0f1e' },
 
-const { width } = Dimensions.get("window")
+  circle:  {
+    position: 'absolute',
+    width: W * 0.65, height: W * 0.65,
+    borderRadius: W * 0.325,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
 
-const styles = StyleSheet.create({
-  root: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 100,
-    justifyContent: "center", alignItems: "center",
-  },
-  center: { alignItems: "center", paddingHorizontal: 32 },
+  logoWrap:{ position: 'absolute', alignItems: 'center', justifyContent: 'center', marginTop: -60 },
 
-  logoBadge: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderColor: "rgba(255,255,255,0.25)", borderWidth: 1,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderRadius: 16, marginBottom: 32,
+  letterRow: { flexDirection: 'row', marginTop: 70 },
+  brandTxt:  {
+    fontSize: 30, fontWeight: '900', color: '#fff',
+    letterSpacing: 5,
+    textShadowColor: 'rgba(124,58,237,0.6)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
   },
-  logoSquare: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "#fff",
-    alignItems: "center", justifyContent: "center",
-  },
-  logoLetter: { fontSize: 20, fontWeight: "900", color: "#6366f1" },
-  logoText:   { fontSize: 18, fontWeight: "900", color: "#fff" },
 
-  greeting: { fontSize: 36, fontWeight: "900", color: "#fff", textAlign: "center", marginBottom: 4 },
-  name:     { fontSize: 36, fontWeight: "900", color: "#fff", textAlign: "center", marginBottom: 14 },
-  subtitle: { fontSize: 15, color: "rgba(237, 233, 254, 0.95)", textAlign: "center", marginBottom: 36 },
+  tagline:  { fontSize: 14, color: 'rgba(255,255,255,0.55)', letterSpacing: 2, marginTop: 10, fontWeight: '400' },
 
-  barTrack: {
-    width: Math.min(width * 0.7, 280),
-    height: 6,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  barFill: {
-    height: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 3,
-  },
-  loadingLabel: {
-    marginTop: 12,
-    fontSize: 10,
-    letterSpacing: 1.5,
-    color: "rgba(237, 233, 254, 0.7)",
-    fontWeight: "600",
-  },
+  versionWrap: { position: 'absolute', bottom: 48 },
+  versionTxt:  { fontSize: 12, color: 'rgba(255,255,255,0.2)', letterSpacing: 1 },
 })
