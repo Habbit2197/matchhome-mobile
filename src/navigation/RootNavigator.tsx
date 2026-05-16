@@ -236,8 +236,16 @@ export default function RootNavigator() {
   )
 
   if (isLoading) return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#7c3aed" />
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#07070f', gap: 20 }}>
+      <View style={{ alignItems: 'center', gap: 12 }}>
+        <ActivityIndicator size="large" color="#7c3aed" />
+        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, letterSpacing: 1 }}>
+          Verificando sesión...
+        </Text>
+      </View>
+      <View style={{ width: 160, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', position: 'absolute', bottom: 60 }}>
+        <View style={{ height: '100%', width: '70%', backgroundColor: '#7c3aed', borderRadius: 2, opacity: 0.8 }} />
+      </View>
     </View>
   )
 
