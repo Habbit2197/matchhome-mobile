@@ -28,6 +28,8 @@ import LandlordHomeScreen      from '../screens/LandlordHomeScreen'
 import TenantProfileEditScreen from '../screens/TenantProfileEditScreen'
 import { useNotifications }    from '../hooks/useNotifications'
 import { usePushNotifications } from '../hooks/usePushNotifications'
+import OnboardingScreen from '../screens/OnboardingScreen'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import WelcomeOverlay          from '../components/animations/WelcomeOverlay'
 
 const Stack = createNativeStackNavigator()
@@ -204,7 +206,8 @@ function MainStack({ role }: { role: string }) {
 // ── Root ──────────────────────────────────────────────────────────
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth()
-  const [showWelcome, setShowWelcome] = useState(true)   // siempre al arrancar
+  const [showWelcome,    setShowWelcome]    = useState(true)
+  const [showOnboarding, setShowOnboarding] = useState(false)   // siempre al arrancar
   const wasAuthRef = useRef(false)
   const fadeAnim   = useRef(new Animated.Value(0)).current
 
@@ -220,7 +223,16 @@ export default function RootNavigator() {
 
   // Animación intro — siempre al arrancar, antes de todo
   if (showWelcome) return (
-    <WelcomeOverlay onFinish={() => setShowWelcome(false)} />
+    <WelcomeOverlay onFinish={async () => {
+      setShowWelcome(false)
+      const done = await AsyncStorage.getItem('onboarding_done')
+      if (!done) setShowOnboarding(true)
+    }} />
+  )
+
+  // Onboarding — solo la primera vez
+  if (showOnboarding) return (
+    <OnboardingScreen onFinish={() => setShowOnboarding(false)} />
   )
 
   if (isLoading) return (
