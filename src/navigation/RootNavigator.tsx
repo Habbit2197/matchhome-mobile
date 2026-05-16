@@ -204,14 +204,13 @@ function MainStack({ role }: { role: string }) {
 // ── Root ──────────────────────────────────────────────────────────
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth()
-  const [showWelcome, setShowWelcome] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(true)   // siempre al arrancar
   const wasAuthRef = useRef(false)
   const fadeAnim   = useRef(new Animated.Value(0)).current
 
   usePushNotifications() // Registrar push token si es dispositivo real
 
   useEffect(() => {
-    if (isAuthenticated && !wasAuthRef.current && user) setShowWelcome(true)
     wasAuthRef.current = isAuthenticated
   }, [isAuthenticated, user])
 
