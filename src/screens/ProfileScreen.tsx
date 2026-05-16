@@ -1,291 +1,273 @@
 /**
- * ProfileScreen — Perfil completo con datos reales.
- * Inquilino: stats de leads, completitud del perfil, badge, acceso a editar.
- * Propietario: rating, pisos activos, galón.
+ * ProfileScreen v2 — Perfil completo y editable con foto.
+ * Edita: foto, bio, teléfono, ciudad preferida, presupuesto.
+ * Accesos: Editar perfil inquilino, Publicar piso, Ayuda, Cerrar sesión.
  */
+import { useState, useCallback } from 'react'
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, Alert, ActivityIndicator, Animated,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  TextInput, ActivityIndicator, Alert, Platform, Image as RNImage,
 } from 'react-native'
+import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
+import * as ImagePicker from 'expo-image-picker'
 import { useAuth } from '../hooks/useAuth'
-import { useEffect, useRef, useState } from 'react'
-import { apiGet } from '../api/client'
+import { api, apiGet, apiPut } from '../api/client'
 
-interface TenantProfileData {
-  max_budget?: number; net_income?: number; occupation_type?: string
-  preferred_city?: string; bio?: string; has_pets?: boolean
-  is_smoker?: boolean; documents_ready?: boolean; has_guarantor?: boolean
-  lifestyle?: string; family_composition?: string
-}
+const MENU_TENANT = (nav: any, role: string) => [
+  { icon: 'person-outline',      label: 'Editar perfil de inquilino', color: '#7c3aed', bg: '#f5f3ff', onPress: () => nav.navigate('TenantProfileEdit') },
+  { icon: 'heart-outline',       label: 'Mis favoritos',             color: '#ef4444', bg: '#fef2f2', onPress: () => nav.navigate('Tabs', { screen: 'Favorites' }) },
+  { icon: 'document-text-outline',label: 'Mis contratos',            color: '#2563eb', bg: '#eff6ff', onPress: () => Alert.alert('Contratos', 'Gestiona tus contratos desde la web por ahora.') },
+]
 
-interface LeadStats { total: number; pending: number; accepted: number; chat_unlocked: number }
+const MENU_LANDLORD = (nav: any) => [
+  { icon: 'home-outline',        label: 'Publicar piso',             color: '#7c3aed', bg: '#f5f3ff', onPress: () => nav.navigate('PublishProperty') },
+  { icon: 'document-text-outline',label: 'Mis contratos',            color: '#2563eb', bg: '#eff6ff', onPress: () => Alert.alert('Contratos', 'Gestiona tus contratos desde la web.') },
+]
 
-function completionPct(p: TenantProfileData | null): number {
-  if (!p) return 0
-  const fields = [p.max_budget, p.net_income, p.occupation_type, p.preferred_city, p.bio, p.family_composition]
-  return Math.round((fields.filter(Boolean).length / fields.length) * 100)
-}
-
-function BadgeChip({ badge }: { badge?: { emoji: string; label: string; color: string } }) {
-  if (!badge?.emoji) return null
-  return (
-    <View style={[styles.badgeChip, { borderColor: badge.color, backgroundColor: badge.color + '20' }]}>
-      <Text style={[styles.badgeTxt, { color: badge.color }]}>{badge.emoji} {badge.label}</Text>
-    </View>
-  )
-}
-
-function StatBox({ icon, label, value, color = '#7c3aed' }: { icon: string; label: string; value: string | number; color?: string }) {
-  return (
-    <View style={styles.statBox}>
-      <View style={[styles.statIcon, { backgroundColor: color + '15' }]}>
-        <Ionicons name={icon as any} size={18} color={color} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  )
-}
-
-function MenuItem({ icon, label, value, onPress, danger }: {
-  icon: string; label: string; value?: string; onPress?: () => void; danger?: boolean
-}) {
-  return (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.menuIcon, danger && { backgroundColor: '#fef2f2' }]}>
-        <Ionicons name={icon as any} size={18} color={danger ? '#ef4444' : '#475569'} />
-      </View>
-      <Text style={[styles.menuLabel, danger && { color: '#ef4444' }]}>{label}</Text>
-      {value && <Text style={styles.menuValue}>{value}</Text>}
-      {!danger && <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />}
-    </TouchableOpacity>
-  )
-}
+const MENU_COMMON = (nav: any, logout: () => void) => [
+  { icon: 'help-circle-outline', label: 'Ayuda y soporte',           color: '#059669', bg: '#ecfdf5', onPress: () => nav.navigate('Help') },
+  { icon: 'shield-outline',      label: 'Privacidad y datos',        color: '#64748b', bg: '#f8fafc', onPress: () => Alert.alert('Privacidad', 'Cumplimos con el RGPD. matchhometeam@gmail.com') },
+  { icon: 'log-out-outline',     label: 'Cerrar sesión',             color: '#ef4444', bg: '#fef2f2', onPress: () =>
+    Alert.alert('Cerrar sesión', '¿Estás seguro?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Cerrar sesión', style: 'destructive', onPress: logout },
+    ])
+  },
+]
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth()
-  const navigation = useNavigation<any>()
-  const [profile,   setProfile]   = useState<TenantProfileData | null>(null)
-  const [leadStats, setLeadStats] = useState<LeadStats>({ total: 0, pending: 0, accepted: 0, chat_unlocked: 0 })
-  const [loading,   setLoading]   = useState(true)
-  const fadeAnim = useRef(new Animated.Value(0)).current
+  const navigation   = useNavigation<any>()
+  const { user, logout, refresh } = useAuth()
 
-  const isTenant   = user?.role === 'tenant'
-  const isLandlord = user?.role === 'landlord' || user?.role === 'agency_admin'
-  const completion = isTenant ? completionPct(profile) : null
+  const [editing,   setEditing]  = useState(false)
+  const [saving,    setSaving]   = useState(false)
+  const [uploading, setUploading]= useState(false)
 
-  useEffect(() => {
-    Promise.all([
-      isTenant ? apiGet('/me/tenant-profile').catch(() => null) : Promise.resolve(null),
-      apiGet('/me/leads?per_page=100').catch(() => null),
-    ]).then(([prof, leadsData]) => {
-      if (prof?.data) setProfile(prof.data)
-      if (leadsData?.data?.items) {
-        const items = leadsData.data.items
-        setLeadStats({
-          total:        items.length,
-          pending:      items.filter((l: any) => l.status === 'new' || l.status === 'contacted').length,
-          accepted:     items.filter((l: any) => l.status === 'closed_won').length,
-          chat_unlocked:items.filter((l: any) => l.chat_unlocked_at).length,
-        })
-      }
-    }).finally(() => {
-      setLoading(false)
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
+  const [name,   setName]   = useState(user?.name ?? '')
+  const [phone,  setPhone]  = useState((user as any)?.phone ?? '')
+  const [bio,    setBio]    = useState((user as any)?.bio ?? '')
+  const [city,   setCity]   = useState((user as any)?.city ?? '')
+  const [budget, setBudget] = useState((user as any)?.max_budget ?? '')
+  const [photoUri, setPhotoUri] = useState<string | null>(null)
+
+  useFocusEffect(useCallback(() => {
+    setName(user?.name ?? '')
+    setPhone((user as any)?.phone ?? '')
+    setBio((user as any)?.bio ?? '')
+    setCity((user as any)?.city ?? '')
+    setBudget((user as any)?.max_budget ?? '')
+  }, [user]))
+
+  const roleLabel  = user?.role === 'tenant' ? 'Inquilino' : user?.role === 'landlord' ? 'Propietario' : 'Agencia'
+  const roleColor  = user?.role === 'tenant' ? '#7c3aed' : user?.role === 'landlord' ? '#2563eb' : '#059669'
+  const avatar     = photoUri ?? (user as any)?.profile_photo_url ?? null
+  const initial    = (user?.name ?? 'U').charAt(0).toUpperCase()
+
+  // Calcular % de perfil completo
+  const fields   = [name, phone, bio, city, budget]
+  const filled   = fields.filter(Boolean).length
+  const progress = Math.round((filled / fields.length) * 100)
+
+  const handlePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') { Alert.alert('Permiso denegado', 'Necesitamos acceso a tu galería'); return }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.8,
     })
-  }, [])
-
-  const handleLogout = () => {
-    Alert.alert('Cerrar sesión', '¿Seguro que quieres salir?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Cerrar sesión', style: 'destructive', onPress: () => logout() },
-    ])
+    if (!result.canceled) {
+      const uri = result.assets[0].uri
+      setPhotoUri(uri)
+      setUploading(true)
+      try {
+        const form = new FormData()
+        const ext  = uri.split('.').pop() ?? 'jpg'
+        form.append('photo', { uri, name: `photo.${ext}`, type: `image/${ext}` } as any)
+        await api.post('/me/photo', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+        await refresh()
+        Alert.alert('✅ Foto actualizada')
+      } catch { Alert.alert('Error', 'No se pudo subir la foto') }
+      finally { setUploading(false) }
+    }
   }
 
-  if (!user) return null
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await apiPut('/me/profile', { name, phone, bio, city, max_budget: budget || undefined })
+      await refresh()
+      setEditing(false)
+      Alert.alert('✅ Perfil actualizado')
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar el perfil')
+    } finally { setSaving(false) }
+  }
+
+  const isTenant   = user?.role === 'tenant'
+  const isLandlord = user?.role === 'landlord'
+  const menuItems  = [
+    ...(isTenant   ? MENU_TENANT(navigation, user?.role ?? '') : []),
+    ...(isLandlord ? MENU_LANDLORD(navigation)  : []),
+    ...MENU_COMMON(navigation, logout),
+  ]
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: 40 }}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.avatarWrap}>
-          <Text style={styles.avatarTxt}>{user.name.charAt(0).toUpperCase()}</Text>
+    <ScrollView style={ss.root} showsVerticalScrollIndicator={false}>
+      {/* Avatar + nombre */}
+      <View style={ss.header}>
+        <TouchableOpacity onPress={handlePhoto} disabled={uploading} style={ss.avatarWrap}>
+          {avatar
+            ? <Image source={{ uri: avatar }} style={ss.avatar} contentFit="cover" />
+            : <View style={ss.avatarFallback}><Text style={ss.avatarTxt}>{initial}</Text></View>
+          }
+          <View style={ss.cameraBtn}>
+            {uploading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Ionicons name="camera" size={14} color="#fff" />
+            }
+          </View>
+        </TouchableOpacity>
+
+        <View style={ss.headerInfo}>
+          <Text style={ss.userName}>{user?.name}</Text>
+          <Text style={ss.userEmail}>{user?.email}</Text>
+          <View style={[ss.roleBadge, { backgroundColor: roleColor + '20' }]}>
+            <Text style={[ss.roleTxt, { color: roleColor }]}>{roleLabel}</Text>
+          </View>
         </View>
-        <Text style={styles.name}>{user.name}</Text>
-        <Text style={styles.email}>{user.email}</Text>
-        <View style={styles.roleChip}>
-          <Ionicons name={isTenant ? 'search' : 'home'} size={11} color="#0f172a" />
-          <Text style={styles.roleTxt}>
-            {isTenant ? 'Inquilino' : isLandlord ? 'Propietario' : 'Agencia'}
-          </Text>
-        </View>
-        {/* Badge galón */}
-        {(user as any).badge && <BadgeChip badge={(user as any).badge} />}
+
+        <TouchableOpacity onPress={() => setEditing(!editing)} style={ss.editBtn}>
+          <Ionicons name={editing ? 'close' : 'pencil'} size={16} color="#7c3aed" />
+        </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <ActivityIndicator style={{ margin: 24 }} color="#7c3aed" />
-      ) : (
-        <Animated.View style={{ opacity: fadeAnim }}>
-          {/* Stats */}
-          <View style={styles.statsRow}>
-            {isTenant ? (
-              <>
-                <StatBox icon="heart-outline"         label="Solicitudes"  value={leadStats.total}        color="#7c3aed" />
-                <View style={styles.divider} />
-                <StatBox icon="chatbubble-outline"    label="Chats activos" value={leadStats.chat_unlocked} color="#0891b2" />
-                <View style={styles.divider} />
-                <StatBox icon="checkmark-done-outline" label="Aceptados"   value={leadStats.accepted}      color="#059669" />
-              </>
-            ) : (
-              <>
-                <StatBox icon="home-outline"          label="Pisos"        value="—"   color="#7c3aed" />
-                <View style={styles.divider} />
-                <StatBox icon="people-outline"        label="Inquilinos"   value="—"   color="#0891b2" />
-                <View style={styles.divider} />
-                <StatBox icon="star-outline"          label="Valoración"   value="—"   color="#f59e0b" />
-              </>
-            )}
+      {/* Barra de progreso */}
+      <View style={ss.progressWrap}>
+        <View style={ss.progressHeader}>
+          <Text style={ss.progressLabel}>Perfil completo</Text>
+          <Text style={ss.progressPct}>{progress}%</Text>
+        </View>
+        <View style={ss.progressBar}>
+          <View style={[ss.progressFill, { width: `${progress}%` as any,
+            backgroundColor: progress >= 80 ? '#059669' : progress >= 50 ? '#d97706' : '#7c3aed' }]} />
+        </View>
+        {progress < 100 && <Text style={ss.progressHint}>Completa tu perfil para mejorar tu score de compatibilidad</Text>}
+      </View>
+
+      {/* Formulario editable */}
+      {editing && (
+        <View style={ss.form}>
+          <Text style={ss.formTitle}>Editar información</Text>
+
+          {[
+            { label: '👤 Nombre', value: name, set: setName, placeholder: 'Tu nombre completo' },
+            { label: '📱 Teléfono', value: phone, set: setPhone, placeholder: '+34 600 000 000', keyboard: 'phone-pad' },
+            { label: '📍 Ciudad preferida', value: city, set: setCity, placeholder: 'Madrid, Barcelona...' },
+            { label: '💰 Presupuesto máximo (€)', value: String(budget), set: setBudget, placeholder: '900', keyboard: 'numeric' },
+          ].map(f => (
+            <View key={f.label} style={ss.field}>
+              <Text style={ss.fieldLabel}>{f.label}</Text>
+              <TextInput value={f.value} onChangeText={f.set}
+                placeholder={f.placeholder} placeholderTextColor="#94a3b8"
+                keyboardType={(f as any).keyboard ?? 'default'}
+                style={ss.fieldInput} />
+            </View>
+          ))}
+
+          <View style={ss.field}>
+            <Text style={ss.fieldLabel}>💬 Bio / Presentación</Text>
+            <TextInput value={bio} onChangeText={setBio} multiline rows={3}
+              placeholder="Cuéntanos algo sobre ti..." placeholderTextColor="#94a3b8"
+              style={[ss.fieldInput, { minHeight: 80, textAlignVertical: 'top' }]} />
           </View>
 
-          {/* Barra completitud (solo inquilinos) */}
-          {isTenant && completion !== null && (
-            <View style={styles.card}>
-              <View style={styles.completionRow}>
-                <Text style={styles.completionLabel}>Completitud del perfil</Text>
-                <Text style={[styles.completionPct, { color: completion >= 80 ? '#059669' : completion >= 50 ? '#d97706' : '#7c3aed' }]}>
-                  {completion}%
-                </Text>
-              </View>
-              <View style={styles.progressBg}>
-                <View style={[styles.progressFill, {
-                  width: `${completion}%` as any,
-                  backgroundColor: completion >= 80 ? '#059669' : completion >= 50 ? '#d97706' : '#7c3aed',
-                }]} />
-              </View>
-              {completion < 70 && (
-                <Text style={styles.completionHint}>
-                  ⚡ Perfiles con +70% reciben 3x más respuestas
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Mi perfil */}
-          <View style={styles.section}><Text style={styles.sectionTitle}>Mi Perfil</Text></View>
-
-          {isTenant && (
-            <>
-              <MenuItem icon="person-outline" label="Editar perfil de inquilino"
-                value={profile?.occupation_type ? '✓ Completado' : 'Incompleto'}
-                onPress={() => navigation.navigate('TenantProfileEdit')} />
-              <MenuItem icon="home-outline"   label="Ciudad preferida"
-                value={profile?.preferred_city || 'No indicada'} />
-              <MenuItem icon="cash-outline"   label="Presupuesto máximo"
-                value={profile?.max_budget ? `${profile.max_budget}€/mes` : 'No indicado'} />
-              <MenuItem icon="paw-outline"    label="Mascotas"
-                value={profile?.has_pets ? 'Sí 🐾' : 'No'} />
-            </>
-          )}
-
-          {isLandlord && (
-            <>
-              <MenuItem icon="home-outline"   label="Mis propiedades"     onPress={() => {}} />
-              <MenuItem icon="people-outline" label="Solicitudes recibidas" onPress={() => {}} />
-              <MenuItem icon="star-outline"   label="Mis valoraciones"    onPress={() => {}} />
-            </>
-          )}
-
-          {/* Mis leads/matches */}
-          <View style={styles.section}><Text style={styles.sectionTitle}>Mis Solicitudes</Text></View>
-          <MenuItem icon="heart-outline"     label="Ver todas mis solicitudes"  onPress={() => navigation.navigate('Matches')} />
-          <MenuItem icon="chatbubble-outline" label="Mis conversaciones"        onPress={() => navigation.navigate('Matches')} />
-
-          {/* Cuenta */}
-          <View style={styles.section}><Text style={styles.sectionTitle}>Cuenta</Text></View>
-          <MenuItem icon="notifications-outline" label="Notificaciones"    onPress={() => navigation.navigate('Notifications')} />
-          <MenuItem icon="help-circle-outline"   label="Ayuda y soporte"  onPress={() => {}} />
-          <MenuItem icon="information-circle-outline" label="Acerca de MatchHome" value="v2.0" />
-
-          {/* Logout */}
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-            <Ionicons name="log-out-outline" size={20} color="#dc2626" />
-            <Text style={styles.logoutTxt}>Cerrar sesión</Text>
+          <TouchableOpacity onPress={handleSave} disabled={saving} style={ss.saveBtn}>
+            {saving
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <><Ionicons name="checkmark-circle" size={18} color="#fff" /><Text style={ss.saveTxt}>Guardar cambios</Text></>
+            }
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       )}
+
+      {/* Info del perfil (modo lectura) */}
+      {!editing && (bio || city || phone) && (
+        <View style={ss.infoCard}>
+          {bio   && <Text style={ss.bioTxt}>{bio}</Text>}
+          {city  && <View style={ss.infoRow}><Ionicons name="location-outline" size={14} color="#94a3b8" /><Text style={ss.infoTxt}>{city}</Text></View>}
+          {phone && <View style={ss.infoRow}><Ionicons name="call-outline" size={14} color="#94a3b8" /><Text style={ss.infoTxt}>{phone}</Text></View>}
+          {budget && <View style={ss.infoRow}><Ionicons name="cash-outline" size={14} color="#94a3b8" /><Text style={ss.infoTxt}>Hasta {budget}€/mes</Text></View>}
+        </View>
+      )}
+
+      {/* Menú de acciones */}
+      <View style={ss.menu}>
+        {menuItems.map((item, i) => (
+          <TouchableOpacity key={i} onPress={item.onPress} style={ss.menuItem}>
+            <View style={[ss.menuIcon, { backgroundColor: item.bg }]}>
+              <Ionicons name={item.icon as any} size={18} color={item.color} />
+            </View>
+            <Text style={ss.menuLabel}>{item.label}</Text>
+            <Ionicons name="chevron-forward" size={14} color="#cbd5e1" />
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={ss.version}>MatchHome v1.0 · matchhometeam@gmail.com</Text>
     </ScrollView>
   )
 }
 
-const styles = StyleSheet.create({
+const ss = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#f8fafc' },
 
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 24, paddingHorizontal: 20,
-    backgroundColor: '#fff', alignItems: 'center',
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
-  },
-  avatarWrap: {
-    width: 84, height: 84, borderRadius: 42,
-    backgroundColor: '#0f172a',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
-  },
-  avatarTxt: { color: '#fff', fontSize: 32, fontWeight: '800' },
-  name:      { fontSize: 20, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3 },
-  email:     { fontSize: 13, color: '#64748b', marginTop: 2 },
-  roleChip:  {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 4,
-    backgroundColor: '#f1f5f9', borderRadius: 99, marginTop: 8,
-  },
-  roleTxt:   { fontSize: 11, fontWeight: '700', color: '#0f172a' },
-  badgeChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 },
-  badgeTxt:  { fontSize: 11, fontWeight: '800' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 24, backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  avatarWrap:    { position: 'relative' },
+  avatar:        { width: 72, height: 72, borderRadius: 24, backgroundColor: '#f1f5f9' },
+  avatarFallback:{ width: 72, height: 72, borderRadius: 24, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center' },
+  avatarTxt:     { fontSize: 28, fontWeight: '800', color: '#fff' },
+  cameraBtn:     { position: 'absolute', bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff' },
+  headerInfo:    { flex: 1 },
+  userName:      { fontSize: 18, fontWeight: '800', color: '#0f172a' },
+  userEmail:     { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  roleBadge:     { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginTop: 5 },
+  roleTxt:       { fontSize: 11, fontWeight: '700' },
+  editBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f5f3ff', alignItems: 'center', justifyContent: 'center' },
 
-  statsRow: {
-    flexDirection: 'row', backgroundColor: '#fff',
-    margin: 12, padding: 16, borderRadius: 20,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2,
-  },
-  statBox:   { flex: 1, alignItems: 'center', gap: 6 },
-  statIcon:  { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  statValue: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-  statLabel: { fontSize: 10, color: '#64748b', fontWeight: '600' },
-  divider:   { width: 1, backgroundColor: '#f1f5f9' },
+  progressWrap:  { backgroundColor: '#fff', padding: 16, marginTop: 8, marginHorizontal: 0, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  progressHeader:{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  progressLabel: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  progressPct:   { fontSize: 12, fontWeight: '800', color: '#7c3aed' },
+  progressBar:   { height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
+  progressFill:  { height: '100%', borderRadius: 3 },
+  progressHint:  { fontSize: 11, color: '#94a3b8', marginTop: 6 },
 
-  card: {
-    backgroundColor: '#fff', marginHorizontal: 12, marginBottom: 8,
-    padding: 16, borderRadius: 20,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
-  },
-  completionRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  completionLabel:{ fontSize: 13, fontWeight: '700', color: '#0f172a' },
-  completionPct:  { fontSize: 16, fontWeight: '800' },
-  progressBg:     { height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
-  progressFill:   { height: '100%', borderRadius: 3 },
-  completionHint: { fontSize: 11, color: '#7c3aed', marginTop: 8, fontWeight: '600' },
+  form:       { backgroundColor: '#fff', margin: 12, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#f1f5f9' },
+  formTitle:  { fontSize: 15, fontWeight: '800', color: '#0f172a', marginBottom: 14 },
+  field:      { marginBottom: 12 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 },
+  fieldInput: { backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, fontSize: 14, color: '#0f172a' },
+  saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#7c3aed', borderRadius: 16, padding: 14, marginTop: 8,
+    shadowColor: '#7c3aed', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  saveTxt:    { color: '#fff', fontWeight: '800', fontSize: 15 },
 
-  section: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' },
+  infoCard:  { backgroundColor: '#fff', margin: 12, borderRadius: 20, padding: 16, gap: 8, borderWidth: 1, borderColor: '#f1f5f9' },
+  bioTxt:    { fontSize: 14, color: '#374151', lineHeight: 20, marginBottom: 4 },
+  infoRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  infoTxt:   { fontSize: 13, color: '#64748b' },
 
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 14,
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f8fafc',
-  },
-  menuIcon:  { width: 34, height: 34, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { flex: 1, fontSize: 14, color: '#0f172a', fontWeight: '500' },
-  menuValue: { fontSize: 12, color: '#94a3b8', fontWeight: '500', marginRight: 4 },
+  menu:     { margin: 12, gap: 6 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff',
+    padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#f1f5f9' },
+  menuIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  menuLabel:{ flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
 
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    margin: 16, paddingVertical: 14,
-    backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#fee2e2',
-  },
-  logoutTxt: { color: '#dc2626', fontSize: 14, fontWeight: '700' },
+  version: { textAlign: 'center', fontSize: 11, color: '#94a3b8', marginBottom: 32 },
 })
