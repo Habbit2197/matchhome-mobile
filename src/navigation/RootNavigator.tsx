@@ -218,6 +218,11 @@ export default function RootNavigator() {
     if (!isLoading) Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
   }, [isLoading])
 
+  // Animación intro — siempre al arrancar, antes de todo
+  if (showWelcome) return (
+    <WelcomeOverlay onFinish={() => setShowWelcome(false)} />
+  )
+
   if (isLoading) return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
       <ActivityIndicator size="large" color="#7c3aed" />
@@ -228,9 +233,6 @@ export default function RootNavigator() {
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <NavigationContainer>
         {isAuthenticated ? <MainStack role={user?.role ?? 'tenant'} /> : <AuthStack />}
-        {showWelcome && user && (
-          <WelcomeOverlay userName={user.name} onFinish={() => setShowWelcome(false)} />
-        )}
       </NavigationContainer>
     </Animated.View>
   )
