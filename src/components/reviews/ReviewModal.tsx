@@ -7,7 +7,7 @@ import {
   StyleSheet, ActivityIndicator, Alert, ScrollView,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { api } from '../api/client'
+import { api } from '../../api/client'
 
 interface Props {
   isOpen:           boolean
