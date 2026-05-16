@@ -6,7 +6,7 @@ import axios, { AxiosError, type AxiosInstance } from 'axios'
 import * as SecureStore from 'expo-secure-store'
 
 // Para desarrollo: cambia a tu IP local cuando uses dispositivo físico
-const API_URL = 'http://192.168.1.129:8000/api'
+const API_URL = 'http://TU_IP_AQUI:8000/api'
 
 const TOKEN_KEY = 'mh_auth_token'
 
