@@ -6,7 +6,7 @@ import axios, { AxiosError, type AxiosInstance } from 'axios'
 import * as SecureStore from 'expo-secure-store'
 
 // Para desarrollo: cambia a tu IP local cuando uses dispositivo físico
-const API_URL = 'https://matchhome.up.railway.app/api'
+const API_URL = 'https://web-production-12589.up.railway.app/api'
 
 const TOKEN_KEY = 'mh_auth_token'
 
